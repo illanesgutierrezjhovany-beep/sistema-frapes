@@ -279,9 +279,9 @@ if opcion == "🛒 Registrar Venta":
                 st.session_state.carrito = []
                 st.rerun()
 
-    # Historial de Ventas
+    # Historial de Ventas y Eliminación Rápida
     st.markdown("---")
-    st.subheader("📋 Ventas Recientes & Tickets")
+    st.subheader("📋 Ventas Recientes & Gestión de Pedidos")
 
     if st.session_state.ventas:
         df_ventas_hist = pd.DataFrame(st.session_state.ventas)
@@ -301,11 +301,51 @@ if opcion == "🛒 Registrar Venta":
 
         st.dataframe(df_ventas_hist[cols_existentes], use_container_width=True)
 
-        id_ver = st.number_input(
-            "Ver Ticket de Pedido N°:",
-            min_value=1,
-            max_value=len(st.session_state.ventas),
-            value=len(st.session_state.ventas),
+        st.markdown("#### 🗑️ Eliminar Venta por Número de ID")
+        col_del1, col_del2 = st.columns([2, 1])
+
+        ids_disponibles = [v["id"] for v in st.session_state.ventas]
+
+        with col_del1:
+            id_a_eliminar = st.selectbox(
+                "Selecciona el ID de la Venta a Eliminar:",
+                options=ids_disponibles,
+                index=len(ids_disponibles) - 1 if ids_disponibles else 0,
+            )
+
+        with col_del2:
+            st.write("")
+            st.write("")
+            if st.button("🗑️ Eliminar Venta Definitivamente", use_container_width=True):
+                venta_target = next(
+                    (v for v in st.session_state.ventas if v["id"] == id_a_eliminar),
+                    None,
+                )
+                if venta_target:
+                    # Restaurar stock si estaba completada
+                    if venta_target.get("estado") == "Completada":
+                        for item in venta_target["detalles"]:
+                            if item["producto"] in st.session_state.inventario:
+                                st.session_state.inventario[item["producto"]][
+                                    "stock"
+                                ] += item["cantidad"]
+
+                    # Eliminar de la lista
+                    st.session_state.ventas = [
+                        v for v in st.session_state.ventas if v["id"] != id_a_eliminar
+                    ]
+                    guardar_datos()
+                    st.success(f"Venta #{id_a_eliminar} eliminada y stock restaurado.")
+                    st.rerun()
+
+        # Visualizar Ticket
+        st.markdown("---")
+        st.markdown("#### 📄 Consultar Ticket")
+        id_ver = st.selectbox(
+            "Ver Ticket del Pedido N°:",
+            options=ids_disponibles,
+            index=len(ids_disponibles) - 1 if ids_disponibles else 0,
+            key="select_ticket_id",
         )
 
         venta_sel = next(
@@ -313,8 +353,6 @@ if opcion == "🛒 Registrar Venta":
         )
 
         if venta_sel:
-            st.markdown("### 📄 Ticket Oficial de Pedido")
-
             items_str = "\n".join([
                 f"  • {i['producto']} (x{i['cantidad']}) -> Bs. {i['subtotal']:.2f}"
                 for i in venta_sel["detalles"]
@@ -342,35 +380,6 @@ GANANCIA NETA:        Bs. {venta_sel['ganancia_neta']:.2f}
 ==================================================
             """
             st.code(ticket_text, language="text")
-
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                if venta_sel["estado"] == "Completada":
-                    if st.button("🚫 Anular Venta (Devolver Stock)"):
-                        venta_sel["estado"] = "Anulada"
-                        for item in venta_sel["detalles"]:
-                            if item["producto"] in st.session_state.inventario:
-                                st.session_state.inventario[item["producto"]][
-                                    "stock"
-                                ] += item["cantidad"]
-                        guardar_datos()
-                        st.success(f"Venta #{id_ver} Anulada.")
-                        st.rerun()
-
-            with col_a2:
-                if st.button("❌ Eliminar Venta Definitivamente"):
-                    if venta_sel["estado"] == "Completada":
-                        for item in venta_sel["detalles"]:
-                            if item["producto"] in st.session_state.inventario:
-                                st.session_state.inventario[item["producto"]][
-                                    "stock"
-                                ] += item["cantidad"]
-                    st.session_state.ventas = [
-                        v for v in st.session_state.ventas if v["id"] != id_ver
-                    ]
-                    guardar_datos()
-                    st.success(f"Venta #{id_ver} Eliminada.")
-                    st.rerun()
     else:
         st.info("No hay registro de ventas en el sistema.")
 
@@ -432,12 +441,12 @@ elif opcion == "📦 Inventario y stock":
                 st.rerun()
 
 # ---------------------------------------------------------
-# 3. DASHBOARD Y ANALÍTICA (KPIs)
+# 3. DASHBOARD Y ANALÍTICA (KPIs Estilo BI)
 # ---------------------------------------------------------
 elif (
     opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)"
 ):
-    st.header("📊 Dashboard Financiero & BI Analytics")
+    st.header("📊 Executive BI Dashboard & Analytics")
 
     ventas_validas = [
         v for v in st.session_state.ventas if v.get("estado") == "Completada"
@@ -445,7 +454,7 @@ elif (
 
     if not ventas_validas:
         st.info(
-            "💡 Registra la primera venta para desbloquear el Dashboard Interactivo."
+            "💡 Registra ventas en el POS para desbloquear el Dashboard Ejecutivo."
         )
     else:
         df = pd.DataFrame(ventas_validas)
@@ -473,7 +482,8 @@ elif (
 
         df_detalles = pd.DataFrame(detalles_list)
 
-        # KPIs Principales
+        # KPIs Principales en Fila Superior
+        tot_pedidos = len(df)
         tot_ventas = df["total_venta"].sum()
         tot_costo = df["costo_total"].sum()
         ganancia_total = df["ganancia_neta"].sum()
@@ -483,186 +493,12 @@ elif (
         ticket_promedio = (
             df["total_venta"].mean() if len(df) > 0 else 0
         )
+        unidades_vendidas = df_detalles["Cantidad"].sum()
 
-        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-        kpi1.metric("💰 Ingresos Totales", f"Bs. {tot_ventas:.2f}")
-        kpi2.metric("📉 Costos Totales", f"Bs. {tot_costo:.2f}")
-        kpi3.metric("🚀 Ganancia Neta", f"Bs. {ganancia_total:.2f}")
-        kpi4.metric("📊 Margen Neto", f"{margen_promedio:.1f}%")
-        kpi5.metric("🎟️ Ticket Promedio", f"Bs. {ticket_promedio:.2f}")
-
-        st.markdown("---")
-
-        # Filtros Dinámicos
-        col_fil1, col_fil2 = st.columns(2)
-        with col_fil1:
-            cat_filtro = st.multiselect(
-                "Filtrar por Categoría:",
-                options=list(df_detalles["Categoria"].unique()),
-                default=list(df_detalles["Categoria"].unique()),
-            )
-        with col_fil2:
-            pago_filtro = st.multiselect(
-                "Filtrar por Método de Pago:",
-                options=list(df_detalles["Metodo_Pago"].unique()),
-                default=list(df_detalles["Metodo_Pago"].unique()),
-            )
-
-        df_filtrado = df_detalles[
-            (df_detalles["Categoria"].isin(cat_filtro))
-            & (df_detalles["Metodo_Pago"].isin(pago_filtro))
-        ]
-
-        st.markdown("---")
-
-        # Bloque de Gráficos 1
-        col_g1, col_g2 = st.columns(2)
-
-        with col_g1:
-            st.subheader("🥤 Top Productos (Ingresos vs Costo)")
-            df_prod_summary = (
-                df_filtrado.groupby("Producto")[
-                    ["Ingreso_Total", "Costo_Total"]
-                ]
-                .sum()
-                .reset_index()
-            )
-
-            fig_prod_bar = go.Figure()
-            fig_prod_bar.add_trace(
-                go.Bar(
-                    y=df_prod_summary["Producto"],
-                    x=df_prod_summary["Ingreso_Total"],
-                    name="Ingresos (Bs.)",
-                    orientation="h",
-                    marker_color="#6366f1",
-                )
-            )
-            fig_prod_bar.add_trace(
-                go.Bar(
-                    y=df_prod_summary["Producto"],
-                    x=df_prod_summary["Costo_Total"],
-                    name="Costo Producción (Bs.)",
-                    orientation="h",
-                    marker_color="#ef4444",
-                )
-            )
-            fig_prod_bar.update_layout(
-                barmode="group",
-                margin=dict(l=20, r=20, t=30, b=20),
-                legend=dict(orientation="h", y=1.1),
-            )
-            st.plotly_chart(
-                fig_prod_bar, use_container_width=True, config=PLOTLY_CONFIG
-            )
-
-        with col_g2:
-            st.subheader("💡 Distribución de Ganancia por Categoría")
-            fig_pie_cat = px.pie(
-                df_filtrado,
-                names="Categoria",
-                values="Ganancia_Neta",
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Pastel,
-            )
-            fig_pie_cat.update_traces(textinfo="percent+label")
-            fig_pie_cat.update_layout(margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(
-                fig_pie_cat, use_container_width=True, config=PLOTLY_CONFIG
-            )
-
-        # Bloque de Gráficos 2
-        col_g3, col_g4 = st.columns(2)
-
-        with col_g3:
-            st.subheader("⏰ Ventas por Hora del Día")
-            df_horas = (
-                df_filtrado.groupby("Hora_Entera")["Ingreso_Total"]
-                .sum()
-                .reset_index()
-            )
-            fig_hora = px.line(
-                df_horas,
-                x="Hora_Entera",
-                y="Ingreso_Total",
-                markers=True,
-                labels={
-                    "Hora_Entera": "Hora del Día (24h)",
-                    "Ingreso_Total": "Ingresos (Bs.)",
-                },
-                color_discrete_sequence=["#10b981"],
-            )
-            fig_hora.update_layout(margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(
-                fig_hora, use_container_width=True, config=PLOTLY_CONFIG
-            )
-
-        with col_g4:
-            st.subheader("💳 Métodos de Pago y Servicio")
-            df_pay_serv = (
-                df_filtrado.groupby(["Metodo_Pago", "Servicio"])[
-                    "Ingreso_Total"
-                ]
-                .sum()
-                .reset_index()
-            )
-            fig_pay = px.bar(
-                df_pay_serv,
-                x="Metodo_Pago",
-                y="Ingreso_Total",
-                color="Servicio",
-                barmode="stack",
-                color_discrete_sequence=["#3b82f6", "#f59e0b"],
-            )
-            fig_pay.update_layout(margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(
-                fig_pay, use_container_width=True, config=PLOTLY_CONFIG
-            )
-
-        # Tabla Dinámica
-        st.markdown("---")
-        st.subheader("🔍 Tabla Dinámica de Ventas Filtradas")
-
-        st.dataframe(
-            df_filtrado[[
-                "ID_Pedido",
-                "Hora_Exacta",
-                "Cliente",
-                "Servicio",
-                "Metodo_Pago",
-                "Producto",
-                "Cantidad",
-                "Ingreso_Total",
-                "Costo_Total",
-                "Ganancia_Neta",
-            ]],
-            use_container_width=True,
-        )
-
-        # Exportación a Excel
-        st.markdown("---")
-        st.subheader("📥 Exportar Datos Financieros a Excel")
-
-        @st.cache_data
-        def generar_excel_pro(df_exp, df_pedidos):
-            import io
-
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                df_exp.to_excel(
-                    writer, index=False, sheet_name="Detalle_Items"
-                )
-                df_pedidos.to_excel(
-                    writer, index=False, sheet_name="Resumen_Pedidos"
-                )
-            return output.getvalue()
-
-        excel_bytes = generar_excel_pro(df_filtrado, df)
-
-        st.download_button(
-            label="📥 Descargar Reporte Excel Completo",
-            data=excel_bytes,
-            file_name=f"Reporte_POS_Bolivia_{obtener_hora_bo().strftime('%Y-%m-%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+        kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
+        kpi1.metric("📦 Total Pedidos", f"{tot_pedidos}")
+        kpi2.metric("💰 Ventas Totales", f"Bs. {tot_ventas:.2f}")
+        kpi3.metric("📉 Costos Totales", f"Bs. {tot_costo:.2f}")
+        kpi4.metric("🚀 Ganancia Neta", f"Bs. {ganancia_total:.2f}")
+        kpi5.metric("📊 Margen Neto", f"{margen_promedio:.1f}%")
+        kpi6.metric("🥤 Items Vendidos", f"{unidades_vendidas}")
