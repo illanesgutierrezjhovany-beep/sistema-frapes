@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# Zona Horaria Bolivia
+# Zona Horaria Bolivia (GMT-4)
 ZONA_BOLIVIA = zoneinfo.ZoneInfo("America/La_Paz")
 
 
@@ -16,7 +16,7 @@ def obtener_hora_bo():
 
 
 # ---------------------------------------------------------
-# CONFIGURACIÓN DE LA PÁGINA (Optimizado Móvil + Tema Dark Pro)
+# CONFIGURACIÓN DE LA PÁGINA
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Sistema POS & Analytics - Frappés",
@@ -25,35 +25,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Estilos CSS y Reloj en Vivo Ajustado a Bolivia
+# Estilos CSS
 st.markdown(
     """
     <style>
     .stApp {
         max-width: 100%;
         padding: 0.8rem;
-    }
-    .reloj-container {
-        background: linear-gradient(135deg, #1e1b4b 0%, #311b92 100%);
-        color: #ffffff;
-        padding: 12px 20px;
-        border-radius: 12px;
-        text-align: center;
-        margin-bottom: 20px;
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.3);
-        border: 1px solid rgba(255,255,255,0.1);
-    }
-    .reloj-hora {
-        font-size: 2.2rem;
-        font-weight: 800;
-        color: #00e676;
-        letter-spacing: 2px;
-        font-family: 'Courier New', monospace;
-    }
-    .reloj-fecha {
-        font-size: 1rem;
-        color: #cbd5e1;
-        text-transform: capitalize;
     }
     div[data-testid="stMetricValue"] {
         font-size: 1.8rem;
@@ -63,34 +41,31 @@ st.markdown(
         user-select: none;
     }
     </style>
-
-    <div class="reloj-container">
-        <div class="reloj-fecha" id="fecha-live">Cargando fecha de Bolivia...</div>
-        <div class="reloj-hora" id="reloj-live">00:00:00</div>
-        <div style="font-size: 0.75rem; color: #94a3b8; margin-top:2px;">Hora Oficial de Bolivia (GMT-4)</div>
-    </div>
-
-    <script>
-    function actualizarRelojBO() {
-        const opciones = { timeZone: 'America/La_Paz', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
-        const opcionesFecha = { timeZone: 'America/La_Paz', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        
-        const ahora = new Date();
-        const horaStr = ahora.toLocaleTimeString('es-BO', opciones);
-        const fechaStr = ahora.toLocaleDateString('es-BO', opcionesFecha);
-        
-        document.getElementById('reloj-live').textContent = horaStr;
-        document.getElementById('fecha-live').textContent = fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
-    }
-    setInterval(actualizarRelojBO, 1000);
-    actualizarRelojBO();
-    </script>
 """,
     unsafe_allow_html=True,
 )
 
 # ---------------------------------------------------------
-# PERSISTENCIA LOCAL Y DATOS INICIALES
+# ENCABEZADO CON FECHA Y HORA OFICIAL DE BOLIVIA
+# ---------------------------------------------------------
+ahora_bo = obtener_hora_bo()
+fecha_bo_str = ahora_bo.strftime("%A, %d de %B de %Y").capitalize()
+hora_bo_str = ahora_bo.strftime("%H:%M:%S")
+
+col_rel1, col_rel2 = st.columns([3, 1])
+with col_rel1:
+    st.title("🥤 Sistema POS & Analytics - Frappés")
+with col_rel2:
+    st.metric(
+        label=f"🇧🇴 Bolivia ({fecha_bo_str})",
+        value=hora_bo_str,
+        delta="Hora Oficial (GMT-4)",
+    )
+
+st.markdown("---")
+
+# ---------------------------------------------------------
+# GESTIÓN DE DATOS Y PERSISTENCIA LOCAL
 # ---------------------------------------------------------
 DATA_FILE = "sistema_datos.json"
 
@@ -171,7 +146,7 @@ if "datos_cargados" not in st.session_state:
 PLOTLY_CONFIG = {"staticPlot": True, "responsive": True}
 
 # ---------------------------------------------------------
-# NAVEGACIÓN
+# MENÚ NAVEGACIÓN
 # ---------------------------------------------------------
 st.sidebar.title("🥤 Menú Principal")
 opcion = st.sidebar.radio(
@@ -230,177 +205,5 @@ if opcion == "🛒 Registrar Venta":
 
     with col_prod2:
         st.caption(f"Stock: **{info_prod['stock']}**")
-        st.caption(f"Precio: **Bs. {info_prod['precio']:.2f}**")
-
-    with col_prod3:
-        cant = st.number_input(
-            "Cantidad:", min_value=1, max_value=max(1, info_prod["stock"]), value=1
-        )
-
-    if st.button("➕ Agregar al Carrito", use_container_width=True):
-        if info_prod["stock"] < cant:
-            st.error("❌ Stock insuficiente.")
-        else:
-            st.session_state.carrito.append(
-                {
-                    "producto": prod_nom,
-                    "cantidad": cant,
-                    "precio": info_prod["precio"],
-                    "costo": info_prod["costo"],
-                    "subtotal": info_prod["precio"] * cant,
-                    "costo_total": info_prod["costo"] * cant,
-                    "ganancia_item": (info_prod["precio"] - info_prod["costo"])
-                    * cant,
-                    "categoria": info_prod["categoria"],
-                }
-            )
-            st.success(f"Agregado: {prod_nom} (x{cant})")
-
-    if st.session_state.carrito:
-        st.markdown("---")
-        st.subheader("🛒 Resumen del Carrito")
-
-        df_cart = pd.DataFrame(st.session_state.carrito)
-        st.dataframe(
-            df_cart[["producto", "cantidad", "precio", "subtotal"]],
-            use_container_width=True,
-        )
-
-        subtotal_venta = sum(item["subtotal"] for item in st.session_state.carrito)
-        costo_venta = sum(item["costo_total"] for item in st.session_state.carrito)
-
-        st.markdown(f"### **Total a Cobrar: Bs. {subtotal_venta:.2f}**")
-
-        col_b1, col_b2 = st.columns(2)
-        with col_b1:
-            if st.button("✅ Confirmar y Registrar Venta", use_container_width=True):
-                if not nombre_cliente.strip():
-                    st.warning("⚠️ Ingresa el nombre del cliente.")
-                else:
-                    ahora_bo = obtener_hora_bo()
-                    id_pedido = st.session_state.contador_pedido
-
-                    for item in st.session_state.carrito:
-                        st.session_state.inventario[item["producto"]][
-                            "stock"
-                        ] -= item["cantidad"]
-
-                    venta_reg = {
-                        "id": id_pedido,
-                        "fecha": ahora_bo.strftime("%Y-%m-%d"),
-                        "hora": ahora_bo.strftime("%H:%M:%S"),
-                        "cliente": nombre_cliente,
-                        "servicio": tipo_servicio,
-                        "pago": metodo_pago,
-                        "notas": notas_pedido if notas_pedido else "Sin especificación",
-                        "detalles": st.session_state.carrito.copy(),
-                        "total_venta": subtotal_venta,
-                        "costo_total": costo_venta,
-                        "ganancia_neta": subtotal_venta - costo_venta,
-                        "estado": "Completada",
-                    }
-
-                    st.session_state.ventas.append(venta_reg)
-                    st.session_state.contador_pedido += 1
-                    st.session_state.carrito = []
-                    guardar_datos()
-                    st.success(f"🎉 Venta #{id_pedido} registrada exitosamente.")
-                    st.rerun()
-
-        with col_b2:
-            if st.button("🗑️ Vaciar Carrito", use_container_width=True):
-                st.session_state.carrito = []
-                st.rerun()
-
-    # REGISTRO Y TICKET
-    st.markdown("---")
-    st.subheader("📋 Ventas Recientes & Tickets")
-
-    if st.session_state.ventas:
-        df_ventas_hist = pd.DataFrame(st.session_state.ventas)
-        cols_deseadas = [
-            "id",
-            "fecha",
-            "hora",
-            "cliente",
-            "servicio",
-            "pago",
-            "total_venta",
-            "estado",
-        ]
-        cols_existentes = [
-            c for c in cols_deseadas if c in df_ventas_hist.columns
-        ]
-
-        st.dataframe(df_ventas_hist[cols_existentes], use_container_width=True)
-
-        id_ver = st.number_input(
-            "Ver Ticket de Pedido N°:",
-            min_value=1,
-            max_value=len(st.session_state.ventas),
-            value=len(st.session_state.ventas),
-        )
-
-        venta_sel = next(
-            (v for v in st.session_state.ventas if v["id"] == id_ver), None
-        )
-
-        if venta_sel:
-            st.markdown("### 📄 Ticket Oficial de Pedido")
-
-            items_str = "\n".join([
-                f"  • {i['producto']} (x{i['cantidad']}) -> Bs. {i['subtotal']:.2f}"
-                for i in venta_sel["detalles"]
-            ])
-
-            ticket_text = f"""
-==================================================
-        🥤 SISTEMA POS FRAPPÉS BOLIVIA 🥤        
-==================================================
-N° Pedido:     #{venta_sel['id']}
-Fecha/Hora:    {venta_sel['fecha']} - {venta_sel['hora']} (BOT)
---------------------------------------------------
-Cliente:       {venta_sel['cliente']}
-Modalidad:     {venta_sel['servicio']}
-Método Pago:   {venta_sel.get('pago', 'N/A')}
-Notas:         {venta_sel.get('notas', 'Sin especificación')}
-Estado:        {venta_sel['estado']}
---------------------------------------------------
-DETALLE PRODUCTOS:
-{items_str}
---------------------------------------------------
-TOTAL COBRADO:        Bs. {venta_sel['total_venta']:.2f}
-COSTO PRODUCCIÓN:     Bs. {venta_sel['costo_total']:.2f}
-GANANCIA NETA:        Bs. {venta_sel['ganancia_neta']:.2f}
-==================================================
-            """
-            st.code(ticket_text, language="text")
-
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                if venta_sel["estado"] == "Completada":
-                    if st.button("🚫 Anular Venta (Devolver Stock)"):
-                        venta_sel["estado"] = "Anulada"
-                        for item in venta_sel["detalles"]:
-                            if item["producto"] in st.session_state.inventario:
-                                st.session_state.inventario[item["producto"]][
-                                    "stock"
-                                ] += item["cantidad"]
-                        guardar_datos()
-                        st.success(f"Venta #{id_ver} Anulada.")
-                        st.rerun()
-
-            with col_a2:
-                if st.button("❌ Eliminar Venta Definitivamente"):
-                    if venta_sel["estado"] == "Completada":
-                        for item in venta_sel["detalles"]:
-                            if item["producto"] in st.session_state.inventario:
-                                st.session_state.inventario[item["producto"]][
-                                    "stock"
-                                ] += item["cantidad"]
-                    st.session_state.ventas = [
-                        v for v in st.session_state.ventas if v["id"] != id_ver
-                    ]
-                    guardar_datos()
-                    st.success(f"Venta #{id_ver} Eliminada.")
-                    st.rer
+        st.
+        
