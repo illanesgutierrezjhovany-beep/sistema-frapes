@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Estilos CSS y script JS para reloj en tiempo real + gráficos móviles inmóviles
+# Reloj en tiempo real y estilos
 st.markdown(
     """
     <style>
@@ -73,7 +73,7 @@ st.markdown(
 )
 
 # ---------------------------------------------------------
-# GESTIÓN DE DATOS Y PERSISTENCIA LOCAL (Funciona sin internet)
+# GESTIÓN DE DATOS Y PERSISTENCIA LOCAL
 # ---------------------------------------------------------
 DATA_FILE = "sistema_datos.json"
 
@@ -154,12 +154,16 @@ if "datos_cargados" not in st.session_state:
 PLOTLY_CONFIG = {"staticPlot": True, "responsive": True}
 
 # ---------------------------------------------------------
-# MENÚ NAVEGACIÓN Y SIDEBAR
+# MENÚ NAVEGACIÓN
 # ---------------------------------------------------------
 st.sidebar.title("🥤 Menú Principal")
 opcion = st.sidebar.radio(
     "Selecciona una opción:",
-    ["🛒 Registrar Venta", "📦 Inventario & Stock", "📊 Dashboard & KPIs"],
+    [
+        "🛒 Registrar Venta",
+        "📦 Inventario y stock",
+        "📊 Panel de control e indicadores clave de rendimiento (KPI)",
+    ],
 )
 
 # ---------------------------------------------------------
@@ -259,7 +263,6 @@ if opcion == "🛒 Registrar Venta":
                     ahora = datetime.now()
                     id_pedido = st.session_state.contador_pedido
 
-                    # Descontar stock
                     for item in st.session_state.carrito:
                         st.session_state.inventario[item["producto"]][
                             "stock"
@@ -292,27 +295,29 @@ if opcion == "🛒 Registrar Venta":
                 st.session_state.carrito = []
                 st.rerun()
 
-    # ---------------------------------------------------------
-    # HISTORIAL DE VENTAS Y TICKET DETALLADO
-    # ---------------------------------------------------------
+    # HISTORIAL DE VENTAS
     st.markdown("---")
     st.subheader("📋 Registro de Ventas Recientes & Tickets")
 
     if st.session_state.ventas:
         df_ventas_hist = pd.DataFrame(st.session_state.ventas)
-        st.dataframe(
-            df_ventas_hist[[
-                "id",
-                "fecha",
-                "hora",
-                "cliente",
-                "servicio",
-                "pago",
-                "total_venta",
-                "estado",
-            ]],
-            use_container_width=True,
-        )
+
+        # Seleccionar únicamente columnas existentes para evitar errores
+        cols_deseadas = [
+            "id",
+            "fecha",
+            "hora",
+            "cliente",
+            "servicio",
+            "pago",
+            "total_venta",
+            "estado",
+        ]
+        cols_existentes = [
+            c for c in cols_deseadas if c in df_ventas_hist.columns
+        ]
+
+        st.dataframe(df_ventas_hist[cols_existentes], use_container_width=True)
 
         id_ver = st.number_input(
             "Ingresa N° de Pedido para Ver Ticket / Acciones:",
@@ -327,7 +332,7 @@ if opcion == "🛒 Registrar Venta":
 
         if venta_sel:
             st.markdown("### 📄 Ticket Detallado del Pedido")
-            
+
             items_str = "\n".join([
                 f"  • {i['producto']} (x{i['cantidad']}) -> ${i['subtotal']:.2f} [Costo: ${i['costo_total']:.2f}]"
                 for i in venta_sel["detalles"]
@@ -343,7 +348,7 @@ Hora Exacta:   {venta_sel['hora']}
 --------------------------------------------------
 Cliente:       {venta_sel['cliente']}
 Modalidad:     {venta_sel['servicio']}
-Método Pago:   {venta_sel['pago']}
+Método Pago:   {venta_sel.get('pago', 'N/A')}
 Notas:         {venta_sel.get('notas', 'Ninguna')}
 Estado Venta:  {venta_sel['estado']}
 --------------------------------------------------
@@ -385,11 +390,13 @@ GANANCIA NETA:        ${venta_sel['ganancia_neta']:.2f}
                     guardar_datos()
                     st.success(f"Venta #{id_ver} Eliminada.")
                     st.rerun()
+    else:
+        st.info("Aún no hay ventas registradas.")
 
 # ---------------------------------------------------------
 # 2. MÓDULO INVENTARIO Y STOCK
 # ---------------------------------------------------------
-elif opcion == "📦 Inventario & Stock":
+elif opcion == "📦 Inventario y stock":
     st.header("📦 Control de Inventario & Stock")
 
     inv_list = [
@@ -442,9 +449,11 @@ elif opcion == "📦 Inventario & Stock":
                 st.rerun()
 
 # ---------------------------------------------------------
-# 3. MÓDULO DASHBOARD & KPIS DETALLADOS
+# 3. MÓDULO DASHBOARD & KPIS
 # ---------------------------------------------------------
-elif opcion == "📊 Dashboard & KPIs":
+elif (
+    opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)"
+):
     st.header("📊 Dashboard Financiero y Estadísticas")
 
     ventas_validas = [
@@ -521,17 +530,22 @@ elif opcion == "📊 Dashboard & KPIs":
 
         with col_g2:
             st.subheader("💳 Ventas por Método de Pago")
-            df_pago = df.groupby("pago")["total_venta"].sum().reset_index()
-            fig_pago = px.pie(
-                df_pago,
-                names="pago",
-                values="total_venta",
-                title="Ingresos por Forma de Pago",
-                hole=0.4,
-            )
-            st.plotly_chart(
-                fig_pago, use_container_width=True, config=PLOTLY_CONFIG
-            )
+            if "pago" in df.columns:
+                df_pago = (
+                    df.groupby("pago")["total_venta"].sum().reset_index()
+                )
+                fig_pago = px.pie(
+                    df_pago,
+                    names="pago",
+                    values="total_venta",
+                    title="Ingresos por Forma de Pago",
+                    hole=0.4,
+                )
+                st.plotly_chart(
+                    fig_pago, use_container_width=True, config=PLOTLY_CONFIG
+                )
+            else:
+                st.info("Sin registros de métodos de pago aún.")
 
         st.markdown("---")
         st.subheader("📋 Tabla Dinámica con Información Detallada")
