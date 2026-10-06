@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Estilos estéticos
+# Estilos estéticos en CSS para modo oscuro
 st.markdown(
     """
     <style>
@@ -133,8 +133,6 @@ if "datos_cargados" not in st.session_state:
     st.session_state.contador_pedido = data["contador_pedido"]
     st.session_state.carrito = []
     st.session_state.datos_cargados = True
-
-PLOTLY_CONFIG = {"staticPlot": True, "responsive": True}
 
 # Menú lateral
 st.sidebar.title("🥤 Menú Principal")
@@ -279,7 +277,7 @@ if opcion == "🛒 Registrar Venta":
                 st.session_state.carrito = []
                 st.rerun()
 
-    # Historial de Ventas y Eliminación Rápida
+    # Historial de Ventas y Eliminación Directa
     st.markdown("---")
     st.subheader("📋 Ventas Recientes & Gestión de Pedidos")
 
@@ -301,10 +299,10 @@ if opcion == "🛒 Registrar Venta":
 
         st.dataframe(df_ventas_hist[cols_existentes], use_container_width=True)
 
-        st.markdown("#### 🗑️ Eliminar Venta por Número de ID")
-        col_del1, col_del2 = st.columns([2, 1])
-
+        st.markdown("#### 🗑️ Eliminar Venta por ID")
         ids_disponibles = [v["id"] for v in st.session_state.ventas]
+
+        col_del1, col_del2 = st.columns([2, 1])
 
         with col_del1:
             id_a_eliminar = st.selectbox(
@@ -316,13 +314,13 @@ if opcion == "🛒 Registrar Venta":
         with col_del2:
             st.write("")
             st.write("")
-            if st.button("🗑️ Eliminar Venta Definitivamente", use_container_width=True):
+            if st.button("🗑️ Eliminar Venta", use_container_width=True):
                 venta_target = next(
                     (v for v in st.session_state.ventas if v["id"] == id_a_eliminar),
                     None,
                 )
                 if venta_target:
-                    # Restaurar stock si estaba completada
+                    # Restaurar stock si la venta estaba completada
                     if venta_target.get("estado") == "Completada":
                         for item in venta_target["detalles"]:
                             if item["producto"] in st.session_state.inventario:
@@ -330,175 +328,4 @@ if opcion == "🛒 Registrar Venta":
                                     "stock"
                                 ] += item["cantidad"]
 
-                    # Eliminar de la lista
-                    st.session_state.ventas = [
-                        v for v in st.session_state.ventas if v["id"] != id_a_eliminar
-                    ]
-                    guardar_datos()
-                    st.success(f"Venta #{id_a_eliminar} eliminada y stock restaurado.")
-                    st.rerun()
-
-        # Visualizar Ticket
-        st.markdown("---")
-        st.markdown("#### 📄 Consultar Ticket")
-        id_ver = st.selectbox(
-            "Ver Ticket del Pedido N°:",
-            options=ids_disponibles,
-            index=len(ids_disponibles) - 1 if ids_disponibles else 0,
-            key="select_ticket_id",
-        )
-
-        venta_sel = next(
-            (v for v in st.session_state.ventas if v["id"] == id_ver), None
-        )
-
-        if venta_sel:
-            items_str = "\n".join([
-                f"  • {i['producto']} (x{i['cantidad']}) -> Bs. {i['subtotal']:.2f}"
-                for i in venta_sel["detalles"]
-            ])
-
-            ticket_text = f"""
-==================================================
-        🥤 SISTEMA POS FRAPPÉS BOLIVIA 🥤        
-==================================================
-N° Pedido:     #{venta_sel['id']}
-Fecha/Hora:    {venta_sel['fecha']} - {venta_sel['hora']} (BOT)
---------------------------------------------------
-Cliente:       {venta_sel['cliente']}
-Modalidad:     {venta_sel['servicio']}
-Método Pago:   {venta_sel.get('pago', 'N/A')}
-Notas:         {venta_sel.get('notas', 'Sin especificación')}
-Estado:        {venta_sel['estado']}
---------------------------------------------------
-DETALLE PRODUCTOS:
-{items_str}
---------------------------------------------------
-TOTAL COBRADO:        Bs. {venta_sel['total_venta']:.2f}
-COSTO PRODUCCIÓN:     Bs. {venta_sel['costo_total']:.2f}
-GANANCIA NETA:        Bs. {venta_sel['ganancia_neta']:.2f}
-==================================================
-            """
-            st.code(ticket_text, language="text")
-    else:
-        st.info("No hay registro de ventas en el sistema.")
-
-# ---------------------------------------------------------
-# 2. INVENTARIO Y STOCK
-# ---------------------------------------------------------
-elif opcion == "📦 Inventario y stock":
-    st.header("📦 Control y Gestión de Stock")
-
-    inv_list = [
-        {"Producto": k, **v} for k, v in st.session_state.inventario.items()
-    ]
-    df_inv = pd.DataFrame(inv_list)
-
-    st.dataframe(
-        df_inv[["Producto", "categoria", "precio", "costo", "stock"]],
-        use_container_width=True,
-    )
-
-    st.markdown("---")
-    st.subheader("✏️ Gestión de Productos")
-
-    tab1, tab2 = st.tabs(["Ajustar Stock", "Agregar Producto Nuevo"])
-
-    with tab1:
-        prod_edit = st.selectbox(
-            "Seleccionar Producto:", list(st.session_state.inventario.keys())
-        )
-        nuevo_stock = st.number_input(
-            "Nuevo Stock Disponible:",
-            min_value=0,
-            value=st.session_state.inventario[prod_edit]["stock"],
-        )
-        if st.button("Guardar Stock"):
-            st.session_state.inventario[prod_edit]["stock"] = nuevo_stock
-            guardar_datos()
-            st.success("Stock actualizado.")
-            st.rerun()
-
-    with tab2:
-        nuevo_nom = st.text_input("Nombre del Producto:")
-        nueva_cat = st.selectbox("Categoría:", ["Frappés", "Extras"])
-        nuevo_p = st.number_input("Precio Venta (Bs.):", min_value=0.0, value=20.0)
-        nuevo_c = st.number_input(
-            "Costo Producción (Bs.):", min_value=0.0, value=7.0
-        )
-        nuevo_s = st.number_input("Stock Inicial:", min_value=0, value=50)
-
-        if st.button("Crear Producto"):
-            if nuevo_nom:
-                st.session_state.inventario[nuevo_nom] = {
-                    "precio": nuevo_p,
-                    "costo": nuevo_c,
-                    "stock": nuevo_s,
-                    "categoria": nueva_cat,
-                }
-                guardar_datos()
-                st.success("Producto creado con éxito.")
-                st.rerun()
-
-# ---------------------------------------------------------
-# 3. DASHBOARD Y ANALÍTICA (KPIs Estilo BI)
-# ---------------------------------------------------------
-elif (
-    opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)"
-):
-    st.header("📊 Executive BI Dashboard & Analytics")
-
-    ventas_validas = [
-        v for v in st.session_state.ventas if v.get("estado") == "Completada"
-    ]
-
-    if not ventas_validas:
-        st.info(
-            "💡 Registra ventas en el POS para desbloquear el Dashboard Ejecutivo."
-        )
-    else:
-        df = pd.DataFrame(ventas_validas)
-
-        detalles_list = []
-        for v in ventas_validas:
-            for item in v["detalles"]:
-                detalles_list.append({
-                    "ID_Pedido": v["id"],
-                    "Fecha": v["fecha"],
-                    "Hora_Exacta": v["hora"],
-                    "Hora_Entera": int(v["hora"].split(":")[0]),
-                    "Cliente": v["cliente"],
-                    "Servicio": v["servicio"],
-                    "Metodo_Pago": v.get("pago", "Efectivo"),
-                    "Producto": item["producto"],
-                    "Categoria": item["categoria"],
-                    "Cantidad": item["cantidad"],
-                    "Precio_Unit": item["precio"],
-                    "Costo_Unit": item["costo"],
-                    "Ingreso_Total": item["subtotal"],
-                    "Costo_Total": item["costo_total"],
-                    "Ganancia_Neta": item["subtotal"] - item["costo_total"],
-                })
-
-        df_detalles = pd.DataFrame(detalles_list)
-
-        # KPIs Principales en Fila Superior
-        tot_pedidos = len(df)
-        tot_ventas = df["total_venta"].sum()
-        tot_costo = df["costo_total"].sum()
-        ganancia_total = df["ganancia_neta"].sum()
-        margen_promedio = (
-            (ganancia_total / tot_ventas * 100) if tot_ventas > 0 else 0
-        )
-        ticket_promedio = (
-            df["total_venta"].mean() if len(df) > 0 else 0
-        )
-        unidades_vendidas = df_detalles["Cantidad"].sum()
-
-        kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
-        kpi1.metric("📦 Total Pedidos", f"{tot_pedidos}")
-        kpi2.metric("💰 Ventas Totales", f"Bs. {tot_ventas:.2f}")
-        kpi3.metric("📉 Costos Totales", f"Bs. {tot_costo:.2f}")
-        kpi4.metric("🚀 Ganancia Neta", f"Bs. {ganancia_total:.2f}")
-        kpi5.metric("📊 Margen Neto", f"{margen_promedio:.1f}%")
-        kpi6.metric("🥤 Items Vendidos", f"{unidades_vendidas}")
+                    # Filtr
