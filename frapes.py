@@ -1,21 +1,31 @@
 from datetime import datetime
 import json
 import os
+import zoneinfo
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
+# Zona Horaria Bolivia
+ZONA_BOLIVIA = zoneinfo.ZoneInfo("America/La_Paz")
+
+
+def obtener_hora_bo():
+    return datetime.now(ZONA_BOLIVIA)
+
+
 # ---------------------------------------------------------
-# CONFIGURACIÓN DE LA PÁGINA (Optimizado para Celulares)
+# CONFIGURACIÓN DE LA PÁGINA (Optimizado Móvil + Tema Dark Pro)
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Sistema POS - Frappés",
+    page_title="Sistema POS & Analytics - Frappés",
     page_icon="🥤",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# Reloj en tiempo real y estilos
+# Estilos CSS y Reloj en Vivo Ajustado a Bolivia
 st.markdown(
     """
     <style>
@@ -24,26 +34,30 @@ st.markdown(
         padding: 0.8rem;
     }
     .reloj-container {
-        background-color: #1f2937;
+        background: linear-gradient(135deg, #1e1b4b 0%, #311b92 100%);
         color: #ffffff;
-        padding: 10px 15px;
-        border-radius: 10px;
+        padding: 12px 20px;
+        border-radius: 12px;
         text-align: center;
-        font-family: monospace;
-        margin-bottom: 15px;
-        box-shadow: 0px 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.3);
+        border: 1px solid rgba(255,255,255,0.1);
     }
     .reloj-hora {
-        font-size: 1.8rem;
-        font-weight: bold;
-        color: #10b981;
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #00e676;
+        letter-spacing: 2px;
+        font-family: 'Courier New', monospace;
     }
     .reloj-fecha {
-        font-size: 0.9rem;
-        color: #9ca3af;
+        font-size: 1rem;
+        color: #cbd5e1;
+        text-transform: capitalize;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 1.6rem;
+        font-size: 1.8rem;
+        font-weight: 700;
     }
     .js-plotly-plot .plotly .main-svg {
         user-select: none;
@@ -51,72 +65,75 @@ st.markdown(
     </style>
 
     <div class="reloj-container">
-        <div class="reloj-fecha" id="fecha-live">Cargando fecha...</div>
+        <div class="reloj-fecha" id="fecha-live">Cargando fecha de Bolivia...</div>
         <div class="reloj-hora" id="reloj-live">00:00:00</div>
+        <div style="font-size: 0.75rem; color: #94a3b8; margin-top:2px;">Hora Oficial de Bolivia (GMT-4)</div>
     </div>
 
     <script>
-    function actualizarReloj() {
+    function actualizarRelojBO() {
+        const opciones = { timeZone: 'America/La_Paz', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+        const opcionesFecha = { timeZone: 'America/La_Paz', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        
         const ahora = new Date();
-        const opcionesFecha = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const fechaStr = ahora.toLocaleDateString('es-ES', opcionesFecha);
-        const horaStr = ahora.toLocaleTimeString('es-ES');
+        const horaStr = ahora.toLocaleTimeString('es-BO', opciones);
+        const fechaStr = ahora.toLocaleDateString('es-BO', opcionesFecha);
         
         document.getElementById('reloj-live').textContent = horaStr;
         document.getElementById('fecha-live').textContent = fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
     }
-    setInterval(actualizarReloj, 1000);
-    actualizarReloj();
+    setInterval(actualizarRelojBO, 1000);
+    actualizarRelojBO();
     </script>
 """,
     unsafe_allow_html=True,
 )
 
 # ---------------------------------------------------------
-# GESTIÓN DE DATOS Y PERSISTENCIA LOCAL
+# PERSISTENCIA LOCAL Y DATOS INICIALES
 # ---------------------------------------------------------
 DATA_FILE = "sistema_datos.json"
 
 DEFAULT_INVENTORY = {
     "Frappé Clásico Café": {
-        "precio": 35.0,
-        "costo": 12.0,
+        "precio": 20.0,
+        "costo": 7.0,
         "stock": 50,
         "categoria": "Frappés",
     },
-    "Frappé Oreo": {
-        "precio": 40.0,
-        "costo": 15.0,
+    "Frappé Oreo Deluxe": {
+        "precio": 25.0,
+        "costo": 9.0,
         "stock": 40,
         "categoria": "Frappés",
     },
     "Frappé Caramel Macchiato": {
-        "precio": 42.0,
-        "costo": 16.0,
+        "precio": 24.0,
+        "costo": 8.5,
         "stock": 30,
         "categoria": "Frappés",
     },
-    "Frappé Matcha": {
-        "precio": 45.0,
-        "costo": 18.0,
+    "Frappé Matcha Premium": {
+        "precio": 28.0,
+        "costo": 10.0,
         "stock": 25,
         "categoria": "Frappés",
     },
     "Bobas de Tapioca": {
-        "precio": 8.0,
-        "costo": 2.5,
+        "precio": 5.0,
+        "costo": 1.5,
         "stock": 100,
         "categoria": "Extras",
     },
     "Bobas Explosivas Frutilla": {
-        "precio": 10.0,
-        "costo": 3.0,
+        "precio": 6.0,
+        "costo": 2.0,
         "stock": 80,
         "categoria": "Extras",
     },
     "Chantilly Extra": {
-        "precio": 5.0,
-        "costo": 1.5,
+        "precio": 3.0,
+        "costo": 1.0,
         "stock": 60,
         "categoria": "Extras",
     },
@@ -154,7 +171,7 @@ if "datos_cargados" not in st.session_state:
 PLOTLY_CONFIG = {"staticPlot": True, "responsive": True}
 
 # ---------------------------------------------------------
-# MENÚ NAVEGACIÓN
+# NAVEGACIÓN
 # ---------------------------------------------------------
 st.sidebar.title("🥤 Menú Principal")
 opcion = st.sidebar.radio(
@@ -167,15 +184,15 @@ opcion = st.sidebar.radio(
 )
 
 # ---------------------------------------------------------
-# 1. MÓDULO REGISTRAR VENTA
+# 1. REGISTRAR VENTA
 # ---------------------------------------------------------
 if opcion == "🛒 Registrar Venta":
-    st.header("🛒 Registrar Nueva Venta")
+    st.header("🛒 Registro POS de Ventas")
 
     col_cli1, col_cli2, col_cli3 = st.columns([2, 1, 1])
     with col_cli1:
         nombre_cliente = st.text_input(
-            "Nombre del Cliente:", placeholder="Ej: Juan Pérez"
+            "Nombre del Cliente:", placeholder="Ej: Maria Lopez"
         )
     with col_cli2:
         tipo_servicio = st.selectbox(
@@ -187,12 +204,12 @@ if opcion == "🛒 Registrar Venta":
         )
 
     notas_pedido = st.text_input(
-        "Notas / Indicaciones del Pedido:",
-        placeholder="Ej: Sin crema chantilly, extra frío...",
+        "Indicaciones Especiales / Barista:",
+        placeholder="Ej: Poco hielo, extra crema...",
     )
 
     st.markdown("---")
-    st.subheader("Seleccionar Productos")
+    st.subheader("Añadir Productos")
 
     cat_seleccionada = st.radio(
         "Categoría:", ["Todas", "Frappés", "Extras"], horizontal=True
@@ -213,7 +230,7 @@ if opcion == "🛒 Registrar Venta":
 
     with col_prod2:
         st.caption(f"Stock: **{info_prod['stock']}**")
-        st.caption(f"Precio: **${info_prod['precio']:.2f}**")
+        st.caption(f"Precio: **Bs. {info_prod['precio']:.2f}**")
 
     with col_prod3:
         cant = st.number_input(
@@ -252,7 +269,7 @@ if opcion == "🛒 Registrar Venta":
         subtotal_venta = sum(item["subtotal"] for item in st.session_state.carrito)
         costo_venta = sum(item["costo_total"] for item in st.session_state.carrito)
 
-        st.markdown(f"### **Total a Pagar: ${subtotal_venta:.2f}**")
+        st.markdown(f"### **Total a Cobrar: Bs. {subtotal_venta:.2f}**")
 
         col_b1, col_b2 = st.columns(2)
         with col_b1:
@@ -260,7 +277,7 @@ if opcion == "🛒 Registrar Venta":
                 if not nombre_cliente.strip():
                     st.warning("⚠️ Ingresa el nombre del cliente.")
                 else:
-                    ahora = datetime.now()
+                    ahora_bo = obtener_hora_bo()
                     id_pedido = st.session_state.contador_pedido
 
                     for item in st.session_state.carrito:
@@ -270,12 +287,12 @@ if opcion == "🛒 Registrar Venta":
 
                     venta_reg = {
                         "id": id_pedido,
-                        "fecha": ahora.strftime("%Y-%m-%d"),
-                        "hora": ahora.strftime("%H:%M:%S"),
+                        "fecha": ahora_bo.strftime("%Y-%m-%d"),
+                        "hora": ahora_bo.strftime("%H:%M:%S"),
                         "cliente": nombre_cliente,
                         "servicio": tipo_servicio,
                         "pago": metodo_pago,
-                        "notas": notas_pedido if notas_pedido else "Ninguna",
+                        "notas": notas_pedido if notas_pedido else "Sin especificación",
                         "detalles": st.session_state.carrito.copy(),
                         "total_venta": subtotal_venta,
                         "costo_total": costo_venta,
@@ -295,14 +312,12 @@ if opcion == "🛒 Registrar Venta":
                 st.session_state.carrito = []
                 st.rerun()
 
-    # HISTORIAL DE VENTAS
+    # REGISTRO Y TICKET
     st.markdown("---")
-    st.subheader("📋 Registro de Ventas Recientes & Tickets")
+    st.subheader("📋 Ventas Recientes & Tickets")
 
     if st.session_state.ventas:
         df_ventas_hist = pd.DataFrame(st.session_state.ventas)
-
-        # Seleccionar únicamente columnas existentes para evitar errores
         cols_deseadas = [
             "id",
             "fecha",
@@ -320,7 +335,7 @@ if opcion == "🛒 Registrar Venta":
         st.dataframe(df_ventas_hist[cols_existentes], use_container_width=True)
 
         id_ver = st.number_input(
-            "Ingresa N° de Pedido para Ver Ticket / Acciones:",
+            "Ver Ticket de Pedido N°:",
             min_value=1,
             max_value=len(st.session_state.ventas),
             value=len(st.session_state.ventas),
@@ -331,33 +346,32 @@ if opcion == "🛒 Registrar Venta":
         )
 
         if venta_sel:
-            st.markdown("### 📄 Ticket Detallado del Pedido")
+            st.markdown("### 📄 Ticket Oficial de Pedido")
 
             items_str = "\n".join([
-                f"  • {i['producto']} (x{i['cantidad']}) -> ${i['subtotal']:.2f} [Costo: ${i['costo_total']:.2f}]"
+                f"  • {i['producto']} (x{i['cantidad']}) -> Bs. {i['subtotal']:.2f}"
                 for i in venta_sel["detalles"]
             ])
 
             ticket_text = f"""
 ==================================================
-           🥤 SISTEMA POS FRAPPÉS 🥤           
+        🥤 SISTEMA POS FRAPPÉS BOLIVIA 🥤        
 ==================================================
-N° Pedido: #{venta_sel['id']}
-Fecha Registro: {venta_sel['fecha']}
-Hora Exacta:   {venta_sel['hora']}
+N° Pedido:     #{venta_sel['id']}
+Fecha/Hora:    {venta_sel['fecha']} - {venta_sel['hora']} (BOT)
 --------------------------------------------------
 Cliente:       {venta_sel['cliente']}
 Modalidad:     {venta_sel['servicio']}
 Método Pago:   {venta_sel.get('pago', 'N/A')}
-Notas:         {venta_sel.get('notas', 'Ninguna')}
-Estado Venta:  {venta_sel['estado']}
+Notas:         {venta_sel.get('notas', 'Sin especificación')}
+Estado:        {venta_sel['estado']}
 --------------------------------------------------
-DETALLE DE PRODUCTOS:
+DETALLE PRODUCTOS:
 {items_str}
 --------------------------------------------------
-SUBTOTAL:             ${venta_sel['total_venta']:.2f}
-COSTO PRODUCCIÓN:     ${venta_sel['costo_total']:.2f}
-GANANCIA NETA:        ${venta_sel['ganancia_neta']:.2f}
+TOTAL COBRADO:        Bs. {venta_sel['total_venta']:.2f}
+COSTO PRODUCCIÓN:     Bs. {venta_sel['costo_total']:.2f}
+GANANCIA NETA:        Bs. {venta_sel['ganancia_neta']:.2f}
 ==================================================
             """
             st.code(ticket_text, language="text")
@@ -389,189 +403,4 @@ GANANCIA NETA:        ${venta_sel['ganancia_neta']:.2f}
                     ]
                     guardar_datos()
                     st.success(f"Venta #{id_ver} Eliminada.")
-                    st.rerun()
-    else:
-        st.info("Aún no hay ventas registradas.")
-
-# ---------------------------------------------------------
-# 2. MÓDULO INVENTARIO Y STOCK
-# ---------------------------------------------------------
-elif opcion == "📦 Inventario y stock":
-    st.header("📦 Control de Inventario & Stock")
-
-    inv_list = [
-        {"Producto": k, **v} for k, v in st.session_state.inventario.items()
-    ]
-    df_inv = pd.DataFrame(inv_list)
-
-    st.dataframe(
-        df_inv[["Producto", "categoria", "precio", "costo", "stock"]],
-        use_container_width=True,
-    )
-
-    st.markdown("---")
-    st.subheader("✏️ Gestión de Productos")
-
-    tab1, tab2 = st.tabs(["Ajustar Stock", "Agregar Producto Nuevo"])
-
-    with tab1:
-        prod_edit = st.selectbox(
-            "Seleccionar Producto:", list(st.session_state.inventario.keys())
-        )
-        nuevo_stock = st.number_input(
-            "Nuevo Stock Disponible:",
-            min_value=0,
-            value=st.session_state.inventario[prod_edit]["stock"],
-        )
-        if st.button("Guardar Stock"):
-            st.session_state.inventario[prod_edit]["stock"] = nuevo_stock
-            guardar_datos()
-            st.success("Stock actualizado.")
-            st.rerun()
-
-    with tab2:
-        nuevo_nom = st.text_input("Nombre:")
-        nueva_cat = st.selectbox("Categoría:", ["Frappés", "Extras"])
-        nuevo_p = st.number_input("Precio ($):", min_value=0.0, value=30.0)
-        nuevo_c = st.number_input("Costo ($):", min_value=0.0, value=10.0)
-        nuevo_s = st.number_input("Stock Inicial:", min_value=0, value=50)
-
-        if st.button("Crear Producto"):
-            if nuevo_nom:
-                st.session_state.inventario[nuevo_nom] = {
-                    "precio": nuevo_p,
-                    "costo": nuevo_c,
-                    "stock": nuevo_s,
-                    "categoria": nueva_cat,
-                }
-                guardar_datos()
-                st.success("Producto creado.")
-                st.rerun()
-
-# ---------------------------------------------------------
-# 3. MÓDULO DASHBOARD & KPIS
-# ---------------------------------------------------------
-elif (
-    opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)"
-):
-    st.header("📊 Dashboard Financiero y Estadísticas")
-
-    ventas_validas = [
-        v for v in st.session_state.ventas if v.get("estado") == "Completada"
-    ]
-
-    if not ventas_validas:
-        st.info("Aún no hay ventas registradas para generar reportes.")
-    else:
-        df = pd.DataFrame(ventas_validas)
-
-        tot_ventas = df["total_venta"].sum()
-        tot_costo = df["costo_total"].sum()
-        ganancia_neta = df["ganancia_neta"].sum()
-        cant_pedidos = len(df)
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Ingresos Totales", f"${tot_ventas:.2f}")
-        col2.metric("Costo Producción", f"${tot_costo:.2f}")
-        col3.metric(
-            "Ganancia Neta",
-            f"${ganancia_neta:.2f}",
-            delta=f"{(ganancia_neta/tot_ventas*100) if tot_ventas > 0 else 0:.1f}% Margen",
-        )
-        col4.metric("N° Pedidos", cant_pedidos)
-
-        st.markdown("---")
-
-        detalles_list = []
-        for v in ventas_validas:
-            for item in v["detalles"]:
-                detalles_list.append({
-                    "ID_Pedido": v["id"],
-                    "Fecha": v["fecha"],
-                    "Hora_Exacta": v["hora"],
-                    "Cliente": v["cliente"],
-                    "Servicio": v["servicio"],
-                    "Metodo_Pago": v.get("pago", "No Registrado"),
-                    "Notas": v.get("notas", "Ninguna"),
-                    "Producto": item["producto"],
-                    "Categoria": item["categoria"],
-                    "Cantidad": item["cantidad"],
-                    "Precio_Unit": item["precio"],
-                    "Costo_Unit": item["costo"],
-                    "Subtotal_Venta": item["subtotal"],
-                    "Costo_Total": item["costo_total"],
-                    "Ganancia_Item": item["subtotal"] - item["costo_total"],
-                })
-
-        df_detalles = pd.DataFrame(detalles_list)
-
-        col_g1, col_g2 = st.columns(2)
-
-        with col_g1:
-            st.subheader("🥤 Productos Más Vendidos")
-            df_prod = (
-                df_detalles.groupby("Producto")["Cantidad"]
-                .sum()
-                .reset_index()
-                .sort_values(by="Cantidad", ascending=True)
-            )
-            fig_prod = px.bar(
-                df_prod,
-                x="Cantidad",
-                y="Producto",
-                orientation="h",
-                title="Unidades Vendidas por Producto",
-                color="Cantidad",
-                color_continuous_scale="Viridis",
-            )
-            st.plotly_chart(
-                fig_prod, use_container_width=True, config=PLOTLY_CONFIG
-            )
-
-        with col_g2:
-            st.subheader("💳 Ventas por Método de Pago")
-            if "pago" in df.columns:
-                df_pago = (
-                    df.groupby("pago")["total_venta"].sum().reset_index()
-                )
-                fig_pago = px.pie(
-                    df_pago,
-                    names="pago",
-                    values="total_venta",
-                    title="Ingresos por Forma de Pago",
-                    hole=0.4,
-                )
-                st.plotly_chart(
-                    fig_pago, use_container_width=True, config=PLOTLY_CONFIG
-                )
-            else:
-                st.info("Sin registros de métodos de pago aún.")
-
-        st.markdown("---")
-        st.subheader("📋 Tabla Dinámica con Información Detallada")
-
-        st.dataframe(df_detalles, use_container_width=True)
-
-        st.markdown("---")
-        st.subheader("📥 Exportar Informe Diario Completo a Excel")
-
-        @st.cache_data
-        def convertir_excel(df_export):
-            import io
-
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                df_export.to_excel(
-                    writer, index=False, sheet_name="Detalle_Completo"
-                )
-            return output.getvalue()
-
-        excel_data = convertir_excel(df_detalles)
-
-        st.download_button(
-            label="📥 Descargar Reporte Excel",
-            data=excel_data,
-            file_name=f"Reporte_Detallado_Frappes_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+                    st.rer
