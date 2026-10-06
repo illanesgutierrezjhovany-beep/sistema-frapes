@@ -206,4 +206,3 @@ if opcion == "🛒 Registrar Venta":
     with col_prod2:
         st.caption(f"Stock: **{info_prod['stock']}**")
         st.
-        
