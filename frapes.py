@@ -465,6 +465,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
         with col_c1:
             st.subheader("📈 Tendencia de Ventas y Ganancias")
             df_linea = df_detalles.groupby("ID_Pedido")[["Ingreso_Total", "Ganancia_Neta"]].sum().reset_index()
+            df_cant_pedido = df_detalles.groupby("ID_Pedido")["Cantidad"].sum().reset_index()
 
             fig_line = go.Figure()
             fig_line.add_trace(go.Scatter(
@@ -493,9 +494,18 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
+            st.markdown("**📦 Cantidad por pedido**")
+            df_cant_pedido.columns = ["N° Pedido", "Cantidad"]
+            st.dataframe(
+                df_cant_pedido,
+                hide_index=True,
+                use_container_width=True
+            )
+
         with col_c2:
             st.subheader("💳 Métodos de Pago")
             df_pago = df_detalles.groupby("Metodo_Pago")["Ingreso_Total"].sum().reset_index()
+            df_pago_cant = df_detalles.groupby("Metodo_Pago")["Cantidad"].sum().reset_index()
 
             fig_donut = px.pie(
                 df_pago,
@@ -515,6 +525,14 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             )
             st.plotly_chart(fig_donut, use_container_width=True)
 
+            st.markdown("**🥤 Cantidad por método de pago**")
+            df_pago_cant.columns = ["Método de Pago", "Cantidad"]
+            st.dataframe(
+                df_pago_cant,
+                hide_index=True,
+                use_container_width=True
+            )
+
         st.markdown("---")
 
         # Fila 2: Barras
@@ -523,6 +541,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
         with col_c3:
             st.subheader("📊 Ingresos vs Costos por Producto")
             df_prod = df_detalles.groupby("Producto")[["Ingreso_Total", "Costo_Total"]].sum().reset_index()
+            df_prod_cant = df_detalles.groupby("Producto")["Cantidad"].sum().reset_index()
 
             fig_bar_prod = go.Figure()
             fig_bar_prod.add_trace(go.Bar(
@@ -550,9 +569,18 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             )
             st.plotly_chart(fig_bar_prod, use_container_width=True)
 
+            st.markdown("**🥤 Cantidad vendida por producto**")
+            df_prod_cant.columns = ["Producto", "Cantidad"]
+            st.dataframe(
+                df_prod_cant,
+                hide_index=True,
+                use_container_width=True
+            )
+
         with col_c4:
             st.subheader("⏰ Ventas por Horas")
             df_hora = df_detalles.groupby("Hora_Entera")["Ingreso_Total"].sum().reset_index()
+            df_hora_cant = df_detalles.groupby("Hora_Entera")["Cantidad"].sum().reset_index()
 
             fig_hora = px.bar(
                 df_hora,
@@ -561,7 +589,11 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 text="Ingreso_Total",
                 color_discrete_sequence=["#ff007f"],
             )
-            fig_hora.update_traces(texttemplate="Bs. %{text:.0f}", textposition="outside")
+            fig_hora.update_traces(
+                texttemplate="Bs. %{text:.0f}",
+                textposition="outside",
+                hovertemplate="Hora: %{x}<br>Ventas: Bs. %{y:.2f}<extra></extra>"
+            )
             fig_hora.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
@@ -572,6 +604,14 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
             )
             st.plotly_chart(fig_hora, use_container_width=True)
+
+            st.markdown("**🥤 Cantidad vendida por hora**")
+            df_hora_cant.columns = ["Hora", "Cantidad"]
+            st.dataframe(
+                df_hora_cant,
+                hide_index=True,
+                use_container_width=True
+            )
 
         # Tabla Interactiva
         st.markdown("---")
