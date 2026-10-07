@@ -15,26 +15,41 @@ def obtener_hora_bo():
     return datetime.now(ZONA_BOLIVIA)
 
 
-# Configuración de la página
+# Configuración de la página Streamlit
 st.set_page_config(
-    page_title="Sistema POS & Analytics - Frappés",
+    page_title="Sistema POS & Executive Analytics - Frappés",
     page_icon="🥤",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# Estilos CSS
+# Estilos CSS Personalizados Premium (Dark Theme con bordes Neón)
 st.markdown(
     """
     <style>
-    .stApp { max-width: 100%; padding: 0.8rem; }
-    div[data-testid="stMetricValue"] { font-size: 1.8rem; font-weight: 700; }
+    .stApp {
+        background-color: #0d1117;
+        color: #f0f6fc;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 2rem !important;
+        font-weight: 800 !important;
+        color: #00f2fe !important;
+    }
+    .kpi-card {
+        background: linear-gradient(135deg, #161b22 0%, #21262d 100%);
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
-# Encabezado
+# Encabezado con hora oficial de Bolivia
 ahora_bo = obtener_hora_bo()
 fecha_bo_str = ahora_bo.strftime("%A, %d de %B de %Y").capitalize()
 hora_bo_str = ahora_bo.strftime("%H:%M:%S")
@@ -51,6 +66,7 @@ with col_rel2:
 
 st.markdown("---")
 
+# Base de datos local JSON
 DATA_FILE = "sistema_datos.json"
 
 DEFAULT_INVENTORY = {
@@ -138,7 +154,9 @@ opcion = st.sidebar.radio(
     ],
 )
 
+# ---------------------------------------------------------
 # 1. REGISTRAR VENTA
+# ---------------------------------------------------------
 if opcion == "🛒 Registrar Venta":
     st.header("🛒 Registro POS de Ventas")
 
@@ -328,7 +346,9 @@ if opcion == "🛒 Registrar Venta":
     else:
         st.info("No hay registro de ventas en el sistema.")
 
+# ---------------------------------------------------------
 # 2. INVENTARIO Y STOCK
+# ---------------------------------------------------------
 elif opcion == "📦 Inventario y stock":
     st.header("📦 Control y Gestión de Stock")
 
@@ -383,13 +403,15 @@ elif opcion == "📦 Inventario y stock":
                 st.success("Producto creado con éxito.")
                 st.rerun()
 
-# 3. DASHBOARD Y ANALÍTICA
+# ---------------------------------------------------------
+# 3. DASHBOARD Y ANALÍTICA EXECUTIVE BI ULTRA PROFESIONAL
+# ---------------------------------------------------------
 elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
-    st.header("📊 Executive BI Dashboard & Analytics")
+    st.header("🚀 Executive Business Intelligence & Analytics Dashboard")
 
     col_top1, col_top2 = st.columns([4, 1])
     with col_top2:
-        if st.button("⚠️ Resetear BD (Limpiar)", help="Usa esto si tus datos antiguos dañan la vista"):
+        if st.button("⚠️ Resetear BD", help="Limpia la base de datos de ventas"):
             st.session_state.ventas = []
             st.session_state.contador_pedido = 1
             guardar_datos()
@@ -401,18 +423,25 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
     ]
 
     if not ventas_validas:
-        st.info("💡 No hay ventas registradas aún.")
+        st.info("💡 No hay ventas registradas en el sistema. Registra una venta en el menú '🛒 Registrar Venta' para desplegar la analítica en vivo.")
     else:
-        df = pd.DataFrame(ventas_validas)
+        df_pedidos = pd.DataFrame(ventas_validas)
         detalles_list = []
         for v in ventas_validas:
             for item in v.get("detalles", []):
                 detalles_list.append({
                     "ID_Pedido": v.get("id", 0),
+                    "Fecha": v.get("fecha", ""),
+                    "Hora_Exacta": v.get("hora", "00:00:00"),
                     "Hora_Entera": f"{str(v.get('hora', '00:00')).split(':')[0]}:00",
+                    "Cliente": v.get("cliente", "Anónimo"),
+                    "Servicio": v.get("servicio", "Para Llevar"),
                     "Metodo_Pago": v.get("pago", "Efectivo"),
                     "Producto": item.get("producto", "Desconocido"),
+                    "Categoria": item.get("categoria", "Frappés"),
                     "Cantidad": item.get("cantidad", 1),
+                    "Precio_Unit": item.get("precio", 0.0),
+                    "Costo_Unit": item.get("costo", 0.0),
                     "Ingreso_Total": item.get("subtotal", 0.0),
                     "Costo_Total": item.get("costo_total", 0.0),
                     "Ganancia_Neta": item.get("subtotal", 0.0) - item.get("costo_total", 0.0),
@@ -420,29 +449,77 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         df_detalles = pd.DataFrame(detalles_list)
 
-        tot_pedidos = len(df)
-        tot_ventas = df["total_venta"].sum() if "total_venta" in df else 0.0
-        tot_costo = df["costo_total"].sum() if "costo_total" in df else 0.0
-        ganancia_total = df["ganancia_neta"].sum() if "ganancia_neta" in df else 0.0
+        # ---------------------------------------------------------
+        # METRICAS Y KPIS GENERALES
+        # ---------------------------------------------------------
+        tot_pedidos = len(df_pedidos)
+        tot_ventas = df_pedidos["total_venta"].sum() if "total_venta" in df_pedidos else 0.0
+        tot_costo = df_pedidos["costo_total"].sum() if "costo_total" in df_pedidos else 0.0
+        ganancia_total = df_pedidos["ganancia_neta"].sum() if "ganancia_neta" in df_pedidos else 0.0
+        margen_prom = (ganancia_total / tot_ventas * 100) if tot_ventas > 0 else 0
+        total_items = df_detalles["Cantidad"].sum() if not df_detalles.empty else 0
 
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        kpi1.metric("📦 Total Pedidos", f"{tot_pedidos}")
-        kpi2.metric("💰 Ventas Totales", f"Bs. {tot_ventas:.2f}")
-        kpi3.metric("📉 Costos Totales", f"Bs. {tot_costo:.2f}")
-        kpi4.metric("🚀 Ganancia Neta", f"Bs. {ganancia_total:.2f}")
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        k1.metric("📦 Pedidos", f"{tot_pedidos}")
+        k2.metric("💰 Ventas", f"Bs. {tot_ventas:.2f}")
+        k3.metric("📉 Costos", f"Bs. {tot_costo:.2f}")
+        k4.metric("🚀 Ganancia", f"Bs. {ganancia_total:.2f}")
+        k5.metric("📊 Margen", f"{margen_prom:.1f}%")
+        k6.metric("🥤 Items", f"{total_items}")
 
         st.markdown("---")
 
-        col_g1, col_g2 = st.columns([3, 2])
+        # ---------------------------------------------------------
+        # FIGURA 1: GRÁFICO DE LÍNEAS (TENDENCIA DE INGRESOS Y GANANCIAS)
+        # FIGURA 2: GRÁFICO DE ANILLO (MÉTODOS DE PAGO)
+        # ---------------------------------------------------------
+        col_c1, col_c2 = st.columns([3, 2])
 
-        with col_g1:
-            st.subheader("📈 Ventas por Hora")
-            df_horas = df_detalles.groupby("Hora_Entera")["Ingreso_Total"].sum().reset_index()
-            fig_bar_hora = px.bar(df_horas, x="Hora_Entera", y="Ingreso_Total", title="Ingresos por Hora")
-            st.plotly_chart(fig_bar_hora, use_container_width=True)
+        with col_c1:
+            st.subheader("📈 Tendencia de Ventas y Ganancias por Pedido (Líneas)")
+            df_linea = df_detalles.groupby("ID_Pedido")[["Ingreso_Total", "Ganancia_Neta"]].sum().reset_index()
 
-        with col_g2:
-            st.subheader("💳 Métodos de Pago")
+            fig_line = go.Figure()
+            fig_line.add_trace(go.Scatter(
+                x=df_linea["ID_Pedido"], y=df_linea["Ingreso_Total"],
+                mode='lines+markers', name='Ingreso Bruto (Bs.)',
+                line=dict(color='#00f2fe', width=4),
+                marker=dict(size=8, color='#00f2fe')
+            ))
+            fig_line.add_trace(go.Scatter(
+                x=df_linea["ID_Pedido"], y=df_linea["Ganancia_Neta"],
+                mode='lines+markers', name='Ganancia Neta (Bs.)',
+                line=dict(color='#00ff87', width=4, dash='dash'),
+                marker=dict(size=8, color='#00ff87')
+            ))
+            fig_line.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#f0f6fc"),
+                height=320,
+                margin=dict(l=10, r=10, t=20, b=20),
+                legend=dict(orientation="h", y=1.15),
+                xaxis=dict(showgrid=False, title="N° de Pedido"),
+                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bolivianos (Bs.)")
+            )
+            st.plotly_chart(fig_line, use_container_width=True)
+
+        with col_c2:
+            st.subheader("💳 Distribución por Método de Pago (Anillo / Donut)")
             df_pago = df_detalles.groupby("Metodo_Pago")["Ingreso_Total"].sum().reset_index()
-            fig_pie_pago = px.pie(df_pago, values="Ingreso_Total", names="Metodo_Pago", title="Distribución de Pagos")
-            st.plotly_chart(fig_pie_pago, use_container_width=True)
+
+            fig_donut = px.pie(
+                df_pago, values="Ingreso_Total", names="Metodo_Pago",
+                hole=0.6,
+                color_discrete_sequence=["#a855f7", "#00f2fe", "#ff007f"]
+            )
+            fig_donut.update_traces(textinfo="percent+label", pull=[0.05, 0, 0])
+            fig_donut.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#f0f6fc"),
+                height=320,
+                margin=dict(l=10, r=10, t=20, b=20),
+                showlegend=False
+            )
+            st.plotly_chart(fig_donut, use_container_width=
