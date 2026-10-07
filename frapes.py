@@ -36,6 +36,13 @@ st.markdown(
         font-weight: 800 !important;
         color: #00f2fe !important;
     }
+    .cat-box {
+        background-color: #161b22;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #30363d;
+        margin-bottom: 10px;
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -218,7 +225,7 @@ if opcion == "🛒 Registrar Venta":
                         "costo_total": info_prod["costo"] * cant,
                         "ganancia_item": (info_prod["precio"] - info_prod["costo"])
                         * cant,
-                        "categoria": info_prod.get("categoria", "General"),
+                        "categoria": info_prod.get("categoria", "Frappés"),
                     }
                 )
                 st.success(f"Agregado: {prod_nom} (x{cant})")
@@ -421,6 +428,11 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
         detalles_list = []
         for v in ventas_validas:
             for item in v.get("detalles", []):
+                prod_key = item.get("producto", "")
+                cat_item = item.get(
+                    "categoria",
+                    st.session_state.inventario.get(prod_key, {}).get("categoria", "Frappés"),
+                )
                 detalles_list.append({
                     "ID_Pedido": v.get("id", 0),
                     "Fecha": v.get("fecha", ""),
@@ -429,177 +441,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                     "Cliente": v.get("cliente", "Anónimo"),
                     "Servicio": v.get("servicio", "Para Llevar"),
                     "Metodo_Pago": v.get("pago", "Efectivo"),
-                    "Producto": item.get("producto", "Desconocido"),
-                    "Categoria": item.get("categoria", "Frappés"),
+                    "Producto": prod_key,
+                    "Categoria": cat_item,
                     "Cantidad": item.get("cantidad", 1),
-                    "Precio_Unit": item.get("precio", 0.0),
-                    "Costo_Unit": item.get("costo", 0.0),
-                    "Ingreso_Total": item.get("subtotal", 0.0),
-                    "Costo_Total": item.get("costo_total", 0.0),
-                    "Ganancia_Neta": item.get("subtotal", 0.0) - item.get("costo_total", 0.0),
-                })
-
-        df_detalles = pd.DataFrame(detalles_list)
-
-        # KPIs Principales
-        tot_pedidos = len(df_pedidos)
-        tot_ventas = df_pedidos["total_venta"].sum() if "total_venta" in df_pedidos else 0.0
-        tot_costo = df_pedidos["costo_total"].sum() if "costo_total" in df_pedidos else 0.0
-        ganancia_total = df_pedidos["ganancia_neta"].sum() if "ganancia_neta" in df_pedidos else 0.0
-        margen_prom = (ganancia_total / tot_ventas * 100) if tot_ventas > 0 else 0
-        total_items = df_detalles["Cantidad"].sum() if not df_detalles.empty else 0
-
-        k1, k2, k3, k4, k5, k6 = st.columns(6)
-        k1.metric("📦 Pedidos", f"{tot_pedidos}")
-        k2.metric("💰 Ventas", f"Bs. {tot_ventas:.2f}")
-        k3.metric("📉 Costos", f"Bs. {tot_costo:.2f}")
-        k4.metric("🚀 Ganancia", f"Bs. {ganancia_total:.2f}")
-        k5.metric("📊 Margen", f"{margen_prom:.1f}%")
-        k6.metric("🥤 Items", f"{total_items}")
-
-        st.markdown("---")
-
-        # Fila 1: Líneas y Anillo (Donut)
-        col_c1, col_c2 = st.columns([3, 2])
-
-        with col_c1:
-            st.subheader("📈 Tendencia de Ventas y Ganancias")
-            df_linea = df_detalles.groupby("ID_Pedido")[["Ingreso_Total", "Ganancia_Neta"]].sum().reset_index()
-
-            fig_line = go.Figure()
-            fig_line.add_trace(go.Scatter(
-                x=df_linea["ID_Pedido"],
-                y=df_linea["Ingreso_Total"],
-                mode="lines+markers",
-                name="Ingreso (Bs.)",
-                line=dict(color="#00f2fe", width=3),
-            ))
-            fig_line.add_trace(go.Scatter(
-                x=df_linea["ID_Pedido"],
-                y=df_linea["Ganancia_Neta"],
-                mode="lines+markers",
-                name="Ganancia (Bs.)",
-                line=dict(color="#00ff87", width=3, dash="dash"),
-            ))
-            fig_line.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                legend=dict(orientation="h", y=1.15),
-                xaxis=dict(showgrid=False, title="N° Pedido"),
-                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
-            )
-            st.plotly_chart(fig_line, use_container_width=True)
-
-        with col_c2:
-            st.subheader("💳 Métodos de Pago")
-            df_pago = df_detalles.groupby("Metodo_Pago")["Ingreso_Total"].sum().reset_index()
-
-            fig_donut = px.pie(
-                df_pago,
-                values="Ingreso_Total",
-                names="Metodo_Pago",
-                hole=0.5,
-                color_discrete_sequence=["#a855f7", "#00f2fe", "#ff007f"],
-            )
-            fig_donut.update_traces(textinfo="percent+label")
-            fig_donut.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                showlegend=False,
-            )
-            st.plotly_chart(fig_donut, use_container_width=True)
-
-        st.markdown("---")
-
-        # Fila 2: Barras
-        col_c3, col_c4 = st.columns([3, 2])
-
-        with col_c3:
-            st.subheader("📊 Ingresos vs Costos por Producto")
-            df_prod = df_detalles.groupby("Producto")[["Ingreso_Total", "Costo_Total"]].sum().reset_index()
-
-            fig_bar_prod = go.Figure()
-            fig_bar_prod.add_trace(go.Bar(
-                x=df_prod["Producto"],
-                y=df_prod["Ingreso_Total"],
-                name="Ingreso",
-                marker_color="#00f2fe",
-            ))
-            fig_bar_prod.add_trace(go.Bar(
-                x=df_prod["Producto"],
-                y=df_prod["Costo_Total"],
-                name="Costo",
-                marker_color="#ff4757",
-            ))
-            fig_bar_prod.update_layout(
-                barmode="group",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                legend=dict(orientation="h", y=1.15),
-                xaxis=dict(showgrid=False),
-                yaxis=dict(showgrid=True, gridcolor="#21262d"),
-            )
-            st.plotly_chart(fig_bar_prod, use_container_width=True)
-
-        with col_c4:
-            st.subheader("⏰ Ventas por Horas")
-            df_hora = df_detalles.groupby("Hora_Entera")["Ingreso_Total"].sum().reset_index()
-
-            fig_hora = px.bar(
-                df_hora,
-                x="Hora_Entera",
-                y="Ingreso_Total",
-                text="Ingreso_Total",
-                color_discrete_sequence=["#ff007f"],
-            )
-            fig_hora.update_traces(texttemplate="Bs. %{text:.0f}", textposition="outside")
-            fig_hora.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                xaxis=dict(showgrid=False, title="Hora"),
-                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
-            )
-            st.plotly_chart(fig_hora, use_container_width=True)
-
-        # Tabla Interactiva
-        st.markdown("---")
-        st.subheader("🔍 Tabla Dinámica de Transacciones")
-
-        col_fil1, col_fil2 = st.columns(2)
-        with col_fil1:
-            filtro_pago = st.multiselect(
-                "Filtrar por Pago:",
-                options=df_detalles["Metodo_Pago"].unique(),
-                default=df_detalles["Metodo_Pago"].unique(),
-            )
-        with col_fil2:
-            filtro_prod = st.multiselect(
-                "Filtrar por Producto:",
-                options=df_detalles["Producto"].unique(),
-                default=df_detalles["Producto"].unique(),
-            )
-
-        df_filtrado = df_detalles[
-            (df_detalles["Metodo_Pago"].isin(filtro_pago)) &
-            (df_detalles["Producto"].isin(filtro_prod))
-        ]
-
-        st.dataframe(
-            df_filtrado[[
-                "ID_Pedido", "Fecha", "Hora_Exacta", "Cliente", "Servicio",
-                "Metodo_Pago", "Producto", "Cantidad", "Ingreso_Total", "Costo_Total", "Ganancia_Neta"
-            ]],
-            use_container_width=True,
-        )
+                    "Precio_Unit": item.get("
