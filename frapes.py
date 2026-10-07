@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Estilos CSS Personalizados Premium (Dark Theme con bordes Neón)
+# Estilos CSS Personalizados
 st.markdown(
     """
     <style>
@@ -32,17 +32,9 @@ st.markdown(
         color: #f0f6fc;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 2rem !important;
+        font-size: 1.8rem !important;
         font-weight: 800 !important;
         color: #00f2fe !important;
-    }
-    .kpi-card {
-        background: linear-gradient(135deg, #161b22 0%, #21262d 100%);
-        border: 1px solid #30363d;
-        border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
     </style>
 """,
@@ -404,7 +396,7 @@ elif opcion == "📦 Inventario y stock":
                 st.rerun()
 
 # ---------------------------------------------------------
-# 3. DASHBOARD Y ANALÍTICA EXECUTIVE BI ULTRA PROFESIONAL
+# 3. DASHBOARD Y ANALÍTICA EXECUTIVE BI
 # ---------------------------------------------------------
 elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
     st.header("🚀 Executive Business Intelligence & Analytics Dashboard")
@@ -423,7 +415,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
     ]
 
     if not ventas_validas:
-        st.info("💡 No hay ventas registradas en el sistema. Registra una venta en el menú '🛒 Registrar Venta' para desplegar la analítica en vivo.")
+        st.info("💡 No hay ventas registradas aún. Ve a '🛒 Registrar Venta' para añadir pedidos.")
     else:
         df_pedidos = pd.DataFrame(ventas_validas)
         detalles_list = []
@@ -449,9 +441,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         df_detalles = pd.DataFrame(detalles_list)
 
-        # ---------------------------------------------------------
-        # METRICAS Y KPIS GENERALES
-        # ---------------------------------------------------------
+        # KPIs Principales
         tot_pedidos = len(df_pedidos)
         tot_ventas = df_pedidos["total_venta"].sum() if "total_venta" in df_pedidos else 0.0
         tot_costo = df_pedidos["costo_total"].sum() if "costo_total" in df_pedidos else 0.0
@@ -469,57 +459,147 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         st.markdown("---")
 
-        # ---------------------------------------------------------
-        # FIGURA 1: GRÁFICO DE LÍNEAS (TENDENCIA DE INGRESOS Y GANANCIAS)
-        # FIGURA 2: GRÁFICO DE ANILLO (MÉTODOS DE PAGO)
-        # ---------------------------------------------------------
+        # Fila 1: Líneas y Anillo (Donut)
         col_c1, col_c2 = st.columns([3, 2])
 
         with col_c1:
-            st.subheader("📈 Tendencia de Ventas y Ganancias por Pedido (Líneas)")
+            st.subheader("📈 Tendencia de Ventas y Ganancias")
             df_linea = df_detalles.groupby("ID_Pedido")[["Ingreso_Total", "Ganancia_Neta"]].sum().reset_index()
 
             fig_line = go.Figure()
             fig_line.add_trace(go.Scatter(
-                x=df_linea["ID_Pedido"], y=df_linea["Ingreso_Total"],
-                mode='lines+markers', name='Ingreso Bruto (Bs.)',
-                line=dict(color='#00f2fe', width=4),
-                marker=dict(size=8, color='#00f2fe')
+                x=df_linea["ID_Pedido"],
+                y=df_linea["Ingreso_Total"],
+                mode="lines+markers",
+                name="Ingreso (Bs.)",
+                line=dict(color="#00f2fe", width=3),
             ))
             fig_line.add_trace(go.Scatter(
-                x=df_linea["ID_Pedido"], y=df_linea["Ganancia_Neta"],
-                mode='lines+markers', name='Ganancia Neta (Bs.)',
-                line=dict(color='#00ff87', width=4, dash='dash'),
-                marker=dict(size=8, color='#00ff87')
+                x=df_linea["ID_Pedido"],
+                y=df_linea["Ganancia_Neta"],
+                mode="lines+markers",
+                name="Ganancia (Bs.)",
+                line=dict(color="#00ff87", width=3, dash="dash"),
             ))
             fig_line.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#f0f6fc"),
-                height=320,
-                margin=dict(l=10, r=10, t=20, b=20),
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
                 legend=dict(orientation="h", y=1.15),
-                xaxis=dict(showgrid=False, title="N° de Pedido"),
-                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bolivianos (Bs.)")
+                xaxis=dict(showgrid=False, title="N° Pedido"),
+                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
         with col_c2:
-            st.subheader("💳 Distribución por Método de Pago (Anillo / Donut)")
+            st.subheader("💳 Métodos de Pago")
             df_pago = df_detalles.groupby("Metodo_Pago")["Ingreso_Total"].sum().reset_index()
 
             fig_donut = px.pie(
-                df_pago, values="Ingreso_Total", names="Metodo_Pago",
-                hole=0.6,
-                color_discrete_sequence=["#a855f7", "#00f2fe", "#ff007f"]
+                df_pago,
+                values="Ingreso_Total",
+                names="Metodo_Pago",
+                hole=0.5,
+                color_discrete_sequence=["#a855f7", "#00f2fe", "#ff007f"],
             )
-            fig_donut.update_traces(textinfo="percent+label", pull=[0.05, 0, 0])
+            fig_donut.update_traces(textinfo="percent+label")
             fig_donut.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#f0f6fc"),
-                height=320,
-                margin=dict(l=10, r=10, t=20, b=20),
-                showlegend=False
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
+                showlegend=False,
             )
-            st.plotly_chart(fig_donut, use_container_width=
+            st.plotly_chart(fig_donut, use_container_width=True)
+
+        st.markdown("---")
+
+        # Fila 2: Barras
+        col_c3, col_c4 = st.columns([3, 2])
+
+        with col_c3:
+            st.subheader("📊 Ingresos vs Costos por Producto")
+            df_prod = df_detalles.groupby("Producto")[["Ingreso_Total", "Costo_Total"]].sum().reset_index()
+
+            fig_bar_prod = go.Figure()
+            fig_bar_prod.add_trace(go.Bar(
+                x=df_prod["Producto"],
+                y=df_prod["Ingreso_Total"],
+                name="Ingreso",
+                marker_color="#00f2fe",
+            ))
+            fig_bar_prod.add_trace(go.Bar(
+                x=df_prod["Producto"],
+                y=df_prod["Costo_Total"],
+                name="Costo",
+                marker_color="#ff4757",
+            ))
+            fig_bar_prod.update_layout(
+                barmode="group",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#f0f6fc"),
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
+                legend=dict(orientation="h", y=1.15),
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor="#21262d"),
+            )
+            st.plotly_chart(fig_bar_prod, use_container_width=True)
+
+        with col_c4:
+            st.subheader("⏰ Ventas por Horas")
+            df_hora = df_detalles.groupby("Hora_Entera")["Ingreso_Total"].sum().reset_index()
+
+            fig_hora = px.bar(
+                df_hora,
+                x="Hora_Entera",
+                y="Ingreso_Total",
+                text="Ingreso_Total",
+                color_discrete_sequence=["#ff007f"],
+            )
+            fig_hora.update_traces(texttemplate="Bs. %{text:.0f}", textposition="outside")
+            fig_hora.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#f0f6fc"),
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
+                xaxis=dict(showgrid=False, title="Hora"),
+                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
+            )
+            st.plotly_chart(fig_hora, use_container_width=True)
+
+        # Tabla Interactiva
+        st.markdown("---")
+        st.subheader("🔍 Tabla Dinámica de Transacciones")
+
+        col_fil1, col_fil2 = st.columns(2)
+        with col_fil1:
+            filtro_pago = st.multiselect(
+                "Filtrar por Pago:",
+                options=df_detalles["Metodo_Pago"].unique(),
+                default=df_detalles["Metodo_Pago"].unique(),
+            )
+        with col_fil2:
+            filtro_prod = st.multiselect(
+                "Filtrar por Producto:",
+                options=df_detalles["Producto"].unique(),
+                default=df_detalles["Producto"].unique(),
+            )
+
+        df_filtrado = df_detalles[
+            (df_detalles["Metodo_Pago"].isin(filtro_pago)) &
+            (df_detalles["Producto"].isin(filtro_prod))
+        ]
+
+        st.dataframe(
+            df_filtrado[[
+                "ID_Pedido", "Fecha", "Hora_Exacta", "Cliente", "Servicio",
+                "Metodo_Pago", "Producto", "Cantidad", "Ingreso_Total", "Costo_Total", "Ganancia_Neta"
+            ]],
+            use_container_width=True,
+        )
