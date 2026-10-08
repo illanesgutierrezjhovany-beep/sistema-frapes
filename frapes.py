@@ -1,4 +1,5 @@
 from datetime import datetime
+import io
 import json
 import os
 import zoneinfo
@@ -58,7 +59,7 @@ with col_rel2:
 
 st.markdown("---")
 
-# Base de datos local JSON (Funciona 100% offline y persiste al cerrar/abrir)
+# Base de datos local JSON
 DATA_FILE = "sistema_datos.json"
 
 DEFAULT_INVENTORY = {
@@ -143,6 +144,7 @@ opcion = st.sidebar.radio(
         "🛒 Registrar Venta",
         "📦 Inventario y stock",
         "📊 Panel de control e indicadores clave de rendimiento (KPI)",
+        "📥 Exportar Reporte Excel",
     ],
 )
 
@@ -501,7 +503,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         st.markdown("---")
 
-        # Fila 1: Líneas y Anillo (Donut)
+        # Fila 1: Gráficas de Análisis
         col_c1, col_c2 = st.columns([3, 2])
 
         with col_c1:
@@ -510,11 +512,6 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 df_detalles.groupby("ID_Pedido")[
                     ["Ingreso_Total", "Ganancia_Neta"]
                 ]
-                .sum()
-                .reset_index()
-            )
-            df_cant_pedido = (
-                df_detalles.groupby("ID_Pedido")["Cantidad"]
                 .sum()
                 .reset_index()
             )
@@ -550,12 +547,6 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
-            st.markdown("**📦 Cantidad por pedido**")
-            df_cant_pedido.columns = ["N° Pedido", "Cantidad"]
-            st.dataframe(
-                df_cant_pedido, hide_index=True, use_container_width=True
-            )
-
         with col_c2:
             st.subheader("💳 Métodos de Pago")
             df_pago = (
@@ -563,12 +554,6 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 .sum()
                 .reset_index()
             )
-            df_pago_cant = (
-                df_detalles.groupby("Metodo_Pago")["Cantidad"]
-                .sum()
-                .reset_index()
-            )
-
             fig_donut = px.pie(
                 df_pago,
                 values="Ingreso_Total",
@@ -587,15 +572,9 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             )
             st.plotly_chart(fig_donut, use_container_width=True)
 
-            st.markdown("**🥤 Cantidad por método de pago**")
-            df_pago_cant.columns = ["Método de Pago", "Cantidad"]
-            st.dataframe(
-                df_pago_cant, hide_index=True, use_container_width=True
-            )
-
         st.markdown("---")
 
-        # Fila 2: Barras
+        # Fila 2: Barras de Productos y Horas
         col_c3, col_c4 = st.columns([3, 2])
 
         with col_c3:
@@ -606,9 +585,6 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 ]
                 .sum()
                 .reset_index()
-            )
-            df_prod_cant = (
-                df_detalles.groupby("Producto")["Cantidad"].sum().reset_index()
             )
 
             fig_bar_prod = go.Figure()
@@ -641,21 +617,10 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             )
             st.plotly_chart(fig_bar_prod, use_container_width=True)
 
-            st.markdown("**🥤 Cantidad vendida por producto**")
-            df_prod_cant.columns = ["Producto", "Cantidad"]
-            st.dataframe(
-                df_prod_cant, hide_index=True, use_container_width=True
-            )
-
         with col_c4:
             st.subheader("⏰ Ventas por Horas")
             df_hora = (
                 df_detalles.groupby("Hora_Entera")["Ingreso_Total"]
-                .sum()
-                .reset_index()
-            )
-            df_hora_cant = (
-                df_detalles.groupby("Hora_Entera")["Cantidad"]
                 .sum()
                 .reset_index()
             )
@@ -668,9 +633,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 color_discrete_sequence=["#ff007f"],
             )
             fig_hora.update_traces(
-                texttemplate="Bs. %{text:.0f}",
-                textposition="outside",
-                hovertemplate="Hora: %{x}<br>Ventas: Bs. %{y:.2f}<extra></extra>",
+                texttemplate="Bs. %{text:.0f}", textposition="outside"
             )
             fig_hora.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -683,48 +646,103 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             )
             st.plotly_chart(fig_hora, use_container_width=True)
 
-            st.markdown("**🥤 Cantidad vendida por hora**")
-            df_hora_cant.columns = ["Hora", "Cantidad"]
-            st.dataframe(
-                df_hora_cant, hide_index=True, use_container_width=True
+# ---------------------------------------------------------
+# 4. EXPORTAR REPORTE EXCEL (Multi-pestaña estructurada)
+# ---------------------------------------------------------
+elif opcion == "📥 Exportar Reporte Excel":
+    st.header("📥 Generador de Reportes Ejecutivos en Excel")
+    st.write(
+        "Haz clic en el botón para descargar un archivo Excel (`.xlsx`) estructurado con múltiples pestañas profesionales: **Detalle de Ventas**, **Resumen por Producto**, **Métodos de Pago** y **Control de Inventario**."
+    )
+
+    if st.button(
+        "📊 Generar y Descargar Excel Profesional", use_container_width=True
+    ):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            # Pestaña 1: Detalle de Transacciones de Artículos
+            ventas_validas = [
+                v
+                for v in st.session_state.ventas
+                if isinstance(v, dict) and v.get("estado") == "Completada"
+            ]
+            if ventas_validas:
+                detalles_list = []
+                for v in ventas_validas:
+                    for item in v.get("detalles", []):
+                        detalles_list.append(
+                            {
+                                "ID Pedido": v.get("id"),
+                                "Fecha": v.get("fecha"),
+                                "Hora": v.get("hora"),
+                                "Cliente": v.get("cliente"),
+                                "Modalidad": v.get("servicio"),
+                                "Método Pago": v.get("pago"),
+                                "Producto": item.get("producto"),
+                                "Categoría": item.get("categoria"),
+                                "Cantidad": item.get("cantidad"),
+                                "Precio Unit. (Bs.)": item.get("precio"),
+                                "Costo Unit. (Bs.)": item.get("costo"),
+                                "Ingreso Total (Bs.)": item.get("subtotal"),
+                                "Costo Total (Bs.)": item.get("costo_total"),
+                                "Ganancia Neta (Bs.)": item.get(
+                                    "ganancia_item"
+                                ),
+                            }
+                        )
+                df_excel_detalles = pd.DataFrame(detalles_list)
+                df_excel_detalles.to_excel(
+                    writer, sheet_name="Detalle de Ventas", index=False
+                )
+
+                # Pestaña 2: Resumen por Producto
+                df_res_prod = (
+                    df_excel_detalles.groupby(["Producto", "Categoría"])
+                    .agg(
+                        Cantidad_Vendida=("Cantidad", "sum"),
+                        Ingresos_Totales=("Ingreso_Total", "sum"),
+                        Costos_Totales=("Costo_Total", "sum"),
+                        Ganancia_Total=("Ganancia_Neta", "sum"),
+                    )
+                    .reset_index()
+                )
+                df_res_prod.to_excel(
+                    writer, sheet_name="Resumen por Producto", index=False
+                )
+
+                # Pestaña 3: Resumen por Método de Pago
+                df_res_pago = (
+                    df_excel_detalles.groupby("Método Pago")
+                    .agg(
+                        Transacciones=("ID Pedido", "nunique"),
+                        Cantidad_Items=("Cantidad", "sum"),
+                        Total_Recaudado=("Ingreso_Total", "sum"),
+                    )
+                    .reset_index()
+                )
+                df_res_pago.to_excel(
+                    writer, sheet_name="Métodos de Pago", index=False
+                )
+
+            # Pestaña 4: Inventario Actual
+            inv_list = [
+                {"Producto": k, **v}
+                for k, v in st.session_state.inventario.items()
+            ]
+            df_excel_inv = pd.DataFrame(inv_list)
+            df_excel_inv.to_excel(
+                writer, sheet_name="Inventario y Stock", index=False
             )
 
-        # Tabla Interactiva
-        st.markdown("---")
-        st.subheader("🔍 Tabla Dinámica de Transacciones")
+        processed_data = output.getvalue()
 
-        col_fil1, col_fil2 = st.columns(2)
-        with col_fil1:
-            filtro_pago = st.multiselect(
-                "Filtrar por Pago:",
-                options=df_detalles["Metodo_Pago"].unique(),
-                default=df_detalles["Metodo_Pago"].unique(),
-            )
-        with col_fil2:
-            filtro_prod = st.multiselect(
-                "Filtrar por Producto:",
-                options=df_detalles["Producto"].unique(),
-                default=df_detalles["Producto"].unique(),
-            )
-
-        df_filtrado = df_detalles[
-            (df_detalles["Metodo_Pago"].isin(filtro_pago))
-            & (df_detalles["Producto"].isin(filtro_prod))
-        ]
-
-        st.dataframe(
-            df_filtrado[[
-                "ID_Pedido",
-                "Fecha",
-                "Hora_Exacta",
-                "Cliente",
-                "Servicio",
-                "Metodo_Pago",
-                "Producto",
-                "Cantidad",
-                "Ingreso_Total",
-                "Costo_Total",
-                "Ganancia_Neta",
-            ]],
+        st.success(
+            "🎉 ¡Reporte Excel generado exitosamente con estructura de nivel gerencial!"
+        )
+        st.download_button(
+            label="⬇️ Descargar Archivo Excel (.xlsx)",
+            data=processed_data,
+            file_name=f"Reporte_Negocio_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
