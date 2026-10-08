@@ -647,12 +647,12 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.plotly_chart(fig_hora, use_container_width=True)
 
 # ---------------------------------------------------------
-# 4. EXPORTAR REPORTE GERENCIAL CON DASHBOARD EXCEL
+# 4. EXPORTAR REPORTE GERENCIAL CON DASHBOARD EXCEL PROFESIONAL
 # ---------------------------------------------------------
 elif opcion == "📥 Exportar Reporte Gerencial Corporativo":
     st.header("📥 Central de Reportes & Dashboard Ejecutivo en Excel")
     st.write(
-        "Genera un libro corporativo avanzado con **Dashboard Ejecutivo integrado**, tarjetas de resumen con fórmulas, y tablas maestras estructuradas para análisis gerencial y tablas dinámicas."
+        "Genera un libro corporativo avanzado con **Dashboard Ejecutivo integrado** (con todas sus tarjetas completas), y formato visual de tablas profesionales a todo color listas para nivel de empresa nacional."
     )
 
     ventas_validas = [
@@ -730,33 +730,87 @@ elif opcion == "📥 Exportar Reporte Gerencial Corporativo":
         if st.button("📊 Generar Libro Excel con Dashboard Ejecutivo", use_container_width=True):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                # Escribir las pestañas de datos
+                # Escribir las pestañas estándar
                 df_detalles.to_excel(writer, sheet_name="Detalle de Transacciones", index=False)
                 df_res_prod.to_excel(writer, sheet_name="Resumen por Producto", index=False)
                 df_res_pedidos.to_excel(writer, sheet_name="Reporte de Pedidos", index=False)
                 df_res_pagos.to_excel(writer, sheet_name="Flujo por Métodos de Pago", index=False)
 
-                # Crear la pestaña de Dashboard Ejecutivo corporativo
                 workbook = writer.book
+
+                # Función decoradora para aplicar estilo profesional y colores vivos a TODAS las tablas
+                def aplicar_estilo_corporativo(ws, df, titulo_hoja):
+                    ws.views.sheetView[0].showGridLines = True
+                    
+                    # Colores corporativos llamativos
+                    fill_title = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+                    fill_header = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+                    fill_zebra = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
+                    
+                    font_title = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
+                    font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+                    font_normal = Font(name="Calibri", size=11, color="000000")
+                    
+                    border_grid = Border(
+                        left=Side(style='thin', color='D9D9D9'),
+                        right=Side(style='thin', color='D9D9D9'),
+                        top=Side(style='thin', color='D9D9D9'),
+                        bottom=Side(style='thin', color='D9D9D9')
+                    )
+
+                    # Insertar Fila de Título Principal arriba
+                    ws.insert_rows(1, 2)
+                    max_col = len(df.columns)
+                    max_col_letter = get_column_letter(max_col)
+                    
+                    ws.merge_cells(f"A1:{max_col_letter}1")
+                    c_title = ws["A1"]
+                    c_title.value = f"📊 {titulo_hoja.upper()} - EMPRESA DE FRAPPÉS"
+                    c_title.font = font_title
+                    c_title.fill = fill_title
+                    c_title.alignment = Alignment(horizontal="center", vertical="center")
+                    ws.row_dimensions[1].height = 35
+
+                    # Dar formato a la fila de cabeceras (ahora en la fila 3)
+                    ws.row_dimensions[3].height = 25
+                    for col_num in range(1, max_col + 1):
+                        cell = ws.cell(row=3, column=col_num)
+                        cell.font = font_header
+                        cell.fill = fill_header
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+                    # Dar formato a las filas de datos con efecto zebra y bordes finos
+                    for row_num in range(4, len(df) + 4):
+                        ws.row_dimensions[row_num].height = 20
+                        is_even = (row_num % 2 == 0)
+                        for col_num in range(1, max_col + 1):
+                            cell = ws.cell(row=row_num, column=col_num)
+                            cell.font = font_normal
+                            cell.border = border_grid
+                            if is_even:
+                                cell.fill = fill_zebra
+
+                    # Autoajustar ancho de columnas
+                    for col in ws.columns:
+                        max_len = 0
+                        col_letter = get_column_letter(col[0].column)
+                        for cell in col:
+                            if cell.row > 2 and cell.value is not None:
+                                max_len = max(max_len, len(str(cell.value)))
+                        ws.column_dimensions[col_letter].width = max(max_len + 4, 14)
+
+                # Aplicar formato a todas las hojas creadas
+                aplicar_estilo_corporativo(workbook["Detalle de Transacciones"], df_detalles, "Detalle General de Transacciones")
+                aplicar_estilo_corporativo(workbook["Resumen por Producto"], df_res_prod, "Resumen de Rendimiento por Producto")
+                aplicar_estilo_corporativo(workbook["Reporte de Pedidos"], df_res_pedidos, "Control de Pedidos y Clientes")
+                aplicar_estilo_corporativo(workbook["Flujo por Métodos de Pago"], df_res_pagos, "Flujo Financiero por Métodos de Pago")
+
+                # Crear y diseñar la pestaña de Dashboard Ejecutivo corporativo
                 ws_dash = workbook.create_sheet(title="Dashboard Ejecutivo", index=0)
                 ws_dash.views.sheetView[0].showGridLines = True
 
-                # Estilos profesionales
-                font_title = Font(name="Calibri", size=16, bold=True, color="FFFFFF")
-                font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-                font_bold = Font(name="Calibri", size=11, bold=True)
-                font_normal = Font(name="Calibri", size=11)
-                
-                fill_title = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                fill_header = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+                fill_dash_title = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
                 fill_card = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-                
-                border_thin = Border(
-                    left=Side(style='thin', color='D9D9D9'),
-                    right=Side(style='thin', color='D9D9D9'),
-                    top=Side(style='thin', color='D9D9D9'),
-                    bottom=Side(style='thin', color='D9D9D9')
-                )
                 border_card = Border(
                     left=Side(style='medium', color='1F4E78'),
                     right=Side(style='medium', color='1F4E78'),
@@ -765,83 +819,105 @@ elif opcion == "📥 Exportar Reporte Gerencial Corporativo":
                 )
 
                 # Título del Dashboard
-                ws_dash.merge_cells("B2:F2")
+                ws_dash.merge_cells("B2:H2")
                 cell_title = ws_dash["B2"]
                 cell_title.value = "📊 DASHBOARD EJECUTIVO - SISTEMA POS FRAPPÉS"
-                cell_title.font = font_title
-                cell_title.fill = fill_title
+                cell_title.font = Font(name="Calibri", size=16, bold=True, color="FFFFFF")
+                cell_title.fill = fill_dash_title
                 cell_title.alignment = Alignment(horizontal="center", vertical="center")
-                ws_dash.row_dimensions[2].height = 35
+                ws_dash.row_dimensions[2].height = 40
 
-                # Tarjetas de Resumen KPI con Fórmulas de Excel
+                # 4 Tarjetas KPI super completas (Llenando todos los espacios simétricamente)
                 kpis = [
-                    ("Ventas Totales (Bs.)", f"=SUM('Detalle de Transacciones'!L2:L{len(df_detalles)+1})", "B", "C"),
-                    ("Costos Totales (Bs.)", f"=SUM('Detalle de Transacciones'!M2:M{len(df_detalles)+1})", "D", "E"),
-                    ("Utilidad Neta (Bs.)", f"=SUM('Detalle de Transacciones'!N2:N{len(df_detalles)+1})", "F", "G"),
+                    ("VENTAS TOTALES (Bs.)", f"=SUM('Detalle de Transacciones'!L4:L{len(df_detalles)+3})", "B", "C"),
+                    ("COSTOS TOTALES (Bs.)", f"=SUM('Detalle de Transacciones'!M4:M{len(df_detalles)+3})", "D", "E"),
+                    ("UTILIDAD NETA (Bs.)", f"=SUM('Detalle de Transacciones'!N4:N{len(df_detalles)+3})", "F", "G"),
+                    ("PEDIDOS TOTALES", f"=COUNTA('Reporte de Pedidos'!A4:A{len(df_res_pedidos)+3})", "H", "H"),
                 ]
 
                 row_card = 5
                 ws_dash.row_dimensions[row_card].height = 20
                 ws_dash.row_dimensions[row_card+1].height = 30
 
-                for label, formula, col1, col2 in [
-                    ("Ventas Totales (Bs.)", f"=SUM('Detalle de Transacciones'!L2:L{len(df_detalles)+1})", "B", "C"),
-                    ("Costos Totales (Bs.)", f"=SUM('Detalle de Transacciones'!M2:M{len(df_detalles)+1})", "D", "E"),
-                    ("Utilidad Neta (Bs.)", f"=SUM('Detalle de Transacciones'!N2:N{len(df_detalles)+1})", "F", "G"),
-                ]:
-                    ws_dash.merge_cells(f"{col1}{row_card}:{col2}{row_card}")
-                    ws_dash.merge_cells(f"{col1}{row_card+1}:{col2}{row_card+1}")
+                for label, formula, col1, col2 in kpis:
+                    if col1 != col2:
+                        ws_dash.merge_cells(f"{col1}{row_card}:{col2}{row_card}")
+                        ws_dash.merge_cells(f"{col1}{row_card+1}:{col2}{row_card+1}")
                     
                     c_lbl = ws_dash[f"{col1}{row_card}"]
                     c_lbl.value = label
-                    c_lbl.font = Font(name="Calibri", size=10, bold=True, color="595959")
+                    c_lbl.font = Font(name="Calibri", size=10, bold=True, color="1F4E78")
                     c_lbl.alignment = Alignment(horizontal="center", vertical="center")
                     c_lbl.fill = fill_card
 
                     c_val = ws_dash[f"{col1}{row_card+1}"]
                     c_val.value = formula
-                    c_val.font = Font(name="Calibri", size=14, bold=True, color="1F4E78")
+                    c_val.font = Font(name="Calibri", size=14, bold=True, color="2F5597")
                     c_val.alignment = Alignment(horizontal="center", vertical="center")
                     c_val.fill = fill_card
-                    c_val.number_format = "#,##0.00"
+                    if "Bs." in label or "NETA" in label or "TOTALES" in label and "PEDIDOS" not in label:
+                        c_val.number_format = "#,##0.00"
+                    else:
+                        c_val.number_format = "#,##0"
 
-                # Tabla Resumen Rápido en Dashboard (Top Productos)
-                ws_dash["B9"] = "🏆 RESUMEN DE RENDIMIENTO POR PRODUCTO"
-                ws_dash["B9"].font = Font(name="Calibri", size=12, bold=True, color="1F4E78")
+                # Tabla Resumen de Top Productos en el Dashboard
+                ws_dash["B10"] = "🏆 RESUMEN DE RENDIMIENTO POR PRODUCTO"
+                ws_dash["B10"].font = Font(name="Calibri", size=12, bold=True, color="1F4E78")
                 
-                headers_dash = ["Producto", "Categoría", "Cantidad Vendida", "Ingresos (Bs.)", "Ganancia (Bs.)"]
-                for col_idx, h in enumerate(headers_dash, start=2):
-                    cell = ws_dash.cell(row=11, column=col_idx)
+                headers_dash = ["Producto", "Categoría", "Cantidad Vendida", "Ingresos (Bs.)", "Ganancia (Bs.)", "Margen (%)"]
+                for idx, h in enumerate(headers_dash, start=2):
+                    cell = ws_dash.cell(row=12, column=idx)
                     cell.value = h
-                    cell.font = font_header
-                    cell.fill = fill_header
+                    cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+                    cell.fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
                     cell.alignment = Alignment(horizontal="center", vertical="center")
-                ws_dash.row_dimensions[11].height = 25
+                ws_dash.row_dimensions[12].height = 25
 
                 for r_idx, row_data in df_res_prod.iterrows():
-                    r_num = 12 + r_idx
+                    r_num = 13 + r_idx
                     ws_dash.row_dimensions[r_num].height = 20
-                    ws_dash.cell(row=r_num, column=2, value=row_data["Producto"]).font = font_normal
-                    ws_dash.cell(row=r_num, column=3, value=row_data["Categoria"]).font = font_normal
-                    ws_dash.cell(row=r_num, column=4, value=row_data["Cantidad_Total"]).font = font_normal
+                    ws_dash.cell(row=r_num, column=2, value=row_data["Producto"]).font = Font(name="Calibri", size=11)
+                    ws_dash.cell(row=r_num, column=3, value=row_data["Categoria"]).font = Font(name="Calibri", size=11)
                     
+                    c_cant = ws_dash.cell(row=r_num, column=4, value=row_data["Cantidad_Total"])
+                    c_cant.font = Font(name="Calibri", size=11)
+                    c_cant.number_format = "#,##0"
+
                     c_ing = ws_dash.cell(row=r_num, column=5, value=row_data["Ingresos_Totales"])
-                    c_ing.font = font_normal
+                    c_ing.font = Font(name="Calibri", size=11)
                     c_ing.number_format = "#,##0.00"
 
                     c_gan = ws_dash.cell(row=r_num, column=6, value=row_data["Ganancia_Neta"])
-                    c_gan.font = font_normal
+                    c_gan.font = Font(name="Calibri", size=11)
                     c_gan.number_format = "#,##0.00"
 
-                    for c in range(2, 7):
-                        ws_dash.cell(row=r_num, column=c).border = border_thin
+                    c_mar = ws_dash.cell(row=r_num, column=7, value=row_data["Margen_%"])
+                    c_mar.font = Font(name="Calibri", size=11)
+                    c_mar.number_format = "0.00\"%\""
+
+                    for c in range(2, 8):
+                        ws_dash.cell(row=r_num, column=c).border = Border(
+                            left=Side(style='thin', color='D9D9D9'),
+                            right=Side(style='thin', color='D9D9D9'),
+                            top=Side(style='thin', color='D9D9D9'),
+                            bottom=Side(style='thin', color='D9D9D9')
+                        )
+
+                # Autoajustar columnas del Dashboard
+                for col in ws_dash.columns:
+                    max_len = 0
+                    col_letter = get_column_letter(col[0].column)
+                    for cell in col:
+                        if cell.row > 2 and cell.value is not None:
+                            max_len = max(max_len, len(str(cell.value)))
+                    ws_dash.column_dimensions[col_letter].width = max(max_len + 4, 16)
 
             excel_data = output.getvalue()
 
             st.download_button(
-                label="⬇️ Descargar Libro Corporativo con Dashboard (.XLSX)",
+                label="⬇️ Descargar Libro Corporativo Completo con Dashboard (.XLSX)",
                 data=excel_data,
-                file_name=f"Dashboard_Gerencial_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
+                file_name=f"Dashboard_Empresarial_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
