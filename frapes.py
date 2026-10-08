@@ -58,7 +58,7 @@ with col_rel2:
 
 st.markdown("---")
 
-# Base de datos local JSON
+# Base de datos local JSON (Funciona 100% offline y persiste al cerrar/abrir)
 DATA_FILE = "sistema_datos.json"
 
 DEFAULT_INVENTORY = {
@@ -662,3 +662,69 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
             fig_hora = px.bar(
                 df_hora,
+                x="Hora_Entera",
+                y="Ingreso_Total",
+                text="Ingreso_Total",
+                color_discrete_sequence=["#ff007f"],
+            )
+            fig_hora.update_traces(
+                texttemplate="Bs. %{text:.0f}",
+                textposition="outside",
+                hovertemplate="Hora: %{x}<br>Ventas: Bs. %{y:.2f}<extra></extra>",
+            )
+            fig_hora.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#f0f6fc"),
+                height=300,
+                margin=dict(l=10, r=10, t=10, b=10),
+                xaxis=dict(showgrid=False, title="Hora"),
+                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
+            )
+            st.plotly_chart(fig_hora, use_container_width=True)
+
+            st.markdown("**🥤 Cantidad vendida por hora**")
+            df_hora_cant.columns = ["Hora", "Cantidad"]
+            st.dataframe(
+                df_hora_cant, hide_index=True, use_container_width=True
+            )
+
+        # Tabla Interactiva
+        st.markdown("---")
+        st.subheader("🔍 Tabla Dinámica de Transacciones")
+
+        col_fil1, col_fil2 = st.columns(2)
+        with col_fil1:
+            filtro_pago = st.multiselect(
+                "Filtrar por Pago:",
+                options=df_detalles["Metodo_Pago"].unique(),
+                default=df_detalles["Metodo_Pago"].unique(),
+            )
+        with col_fil2:
+            filtro_prod = st.multiselect(
+                "Filtrar por Producto:",
+                options=df_detalles["Producto"].unique(),
+                default=df_detalles["Producto"].unique(),
+            )
+
+        df_filtrado = df_detalles[
+            (df_detalles["Metodo_Pago"].isin(filtro_pago))
+            & (df_detalles["Producto"].isin(filtro_prod))
+        ]
+
+        st.dataframe(
+            df_filtrado[[
+                "ID_Pedido",
+                "Fecha",
+                "Hora_Exacta",
+                "Cliente",
+                "Servicio",
+                "Metodo_Pago",
+                "Producto",
+                "Cantidad",
+                "Ingreso_Total",
+                "Costo_Total",
+                "Ganancia_Neta",
+            ]],
+            use_container_width=True,
+        )
