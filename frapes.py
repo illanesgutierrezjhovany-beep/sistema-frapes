@@ -144,7 +144,7 @@ opcion = st.sidebar.radio(
         "🛒 Registrar Venta",
         "📦 Inventario y stock",
         "📊 Panel de control e indicadores clave de rendimiento (KPI)",
-        "📥 Exportar Reportes para Excel",
+        "📥 Exportar Reportes Empresa (.XLSX)",
     ],
 )
 
@@ -469,7 +469,6 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         df_detalles = pd.DataFrame(detalles_list)
 
-        # KPIs Principales
         tot_pedidos = len(df_pedidos)
         tot_ventas = (
             df_pedidos["total_venta"].sum()
@@ -558,7 +557,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 values="Ingreso_Total",
                 names="Metodo_Pago",
                 hole=0.5,
-                color_discrete_sequence=["#a855f7", "#00f2fe", "#ff007f"],
+                color_discrete_sequence=["#a855f7", "#00f2fe",="#ff007f"],
             )
             fig_donut.update_traces(textinfo="percent+label")
             fig_donut.update_layout(
@@ -645,12 +644,12 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.plotly_chart(fig_hora, use_container_width=True)
 
 # ---------------------------------------------------------
-# 4. EXPORTAR REPORTES PROFESIONALES PARA EXCEL (.XLSX)
+# 4. EXPORTAR REPORTES EMPRESARIALES MULTI-PESTAÑA (.XLSX)
 # ---------------------------------------------------------
-elif opcion == "📥 Exportar Reportes para Excel":
-    st.header("📥 Exportador de Reportes Profesionales (.XLSX)")
+elif opcion == "📥 Exportar Reportes Empresa (.XLSX)":
+    st.header("📥 Central de Reportes Ejecutivos & Dashboard en Excel")
     st.write(
-        "Descarga archivos de Excel verdaderos. Cada tabla se abrirá perfectamente ordenada en sus respectivas columnas, con formato profesional y lista para tablas dinámicas."
+        "Genera un libro corporativo de Excel multi-pestaña estructurado con tablas maestras de **Ingresos, Costos, Pedidos y Dashboard de Rendimiento**, diseñado para nivel de empresa nacional y tablas dinámicas."
     )
 
     ventas_validas = [
@@ -660,92 +659,108 @@ elif opcion == "📥 Exportar Reportes para Excel":
     ]
 
     if not ventas_validas:
-        st.info("💡 Registra al menos una venta para poder exportar reportes.")
+        st.info(
+            "💡 Registra al menos una venta para poder exportar los reportes empresariales."
+        )
     else:
         detalles_list = []
         for v in ventas_validas:
             for item in v.get("detalles", []):
                 detalles_list.append(
                     {
-                        "ID Pedido": v.get("id"),
+                        "ID_Pedido": v.get("id"),
                         "Fecha": v.get("fecha"),
                         "Hora": v.get("hora"),
                         "Cliente": v.get("cliente"),
                         "Modalidad": v.get("servicio"),
-                        "Método Pago": v.get("pago"),
+                        "Metodo_Pago": v.get("pago"),
                         "Producto": item.get("producto"),
-                        "Categoría": item.get("categoria"),
+                        "Categoria": item.get("categoria"),
                         "Cantidad": item.get("cantidad"),
-                        "Precio Unit. (Bs.)": item.get("precio"),
-                        "Costo Unit. (Bs.)": item.get("costo"),
-                        "Ingreso Total (Bs.)": item.get("subtotal"),
-                        "Costo Total (Bs.)": item.get("costo_total"),
-                        "Ganancia Neta (Bs.)": item.get("ganancia_item"),
+                        "Precio_Unitario": item.get("precio"),
+                        "Costo_Unitario": item.get("costo"),
+                        "Ingreso_Total": item.get("subtotal"),
+                        "Costo_Total": item.get("costo_total"),
+                        "Ganancia_Neta": item.get("ganancia_item"),
                     }
                 )
 
-        df_excel_detalles = pd.DataFrame(detalles_list)
+        df_detalles = pd.DataFrame(detalles_list)
 
-        # Función auxiliar para exportar con openpyxl de forma impecable
-        def generar_excel_bytes(df):
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                df.to_excel(writer, index=False, sheet_name="Reporte")
-            return output.getvalue()
-
-        # 1. Tabla de Detalle de Transacciones
-        st.subheader("1️⃣ Detalle General de Transacciones")
-        st.dataframe(df_excel_detalles, use_container_width=True)
-
-        excel_bytes_detalles = generar_excel_bytes(df_excel_detalles)
-        st.download_button(
-            label="⬇️ Descargar Detalle de Ventas (Excel .XLSX)",
-            data=excel_bytes_detalles,
-            file_name=f"Detalle_Ventas_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-
-        st.markdown("---")
-
-        # 2. Resumen por Producto
-        st.subheader("2️⃣ Resumen de Rendimiento por Producto")
+        # Resumen por producto seguro y estructurado
         df_res_prod = (
-            df_excel_detalles.groupby(["Producto", "Categoría"])
+            df_detalles.groupby(["Producto", "Categoria"], as_index=False)
             .agg(
-                Cantidad_Vendida=("Cantidad", "sum"),
+                Cantidad_Total=("Cantidad", "sum"),
                 Ingresos_Totales=("Ingreso_Total", "sum"),
                 Costos_Totales=("Costo_Total", "sum"),
-                Ganancia_Total=("Ganancia_Neta", "sum"),
+                Ganancia_Neta=("Ganancia_Neta", "sum"),
             )
-            .reset_index()
         )
-        st.dataframe(df_res_prod, use_container_width=True)
+        df_res_prod["Margen_%"] = (
+            df_res_prod["Ganancia_Neta"] / df_res_prod["Ingresos_Totales"] * 100
+        ).round(2)
 
-        excel_bytes_prod = generar_excel_bytes(df_res_prod)
+        # Resumen por Pedido / Transacción
+        df_res_pedidos = (
+            df_detalles.groupby(
+                ["ID_Pedido", "Fecha", "Hora", "Cliente", "Modalidad", "Metodo_Pago"],
+                as_index=False,
+            )
+            .agg(
+                Items_Totales=("Cantidad", "sum"),
+                Ingreso_Pedido=("Ingreso_Total", "sum"),
+                Costo_Pedido=("Costo_Total", "sum"),
+                Ganancia_Pedido=("Ganancia_Neta", "sum"),
+            )
+        )
+
+        # Resumen por Método de Pago
+        df_res_pagos = (
+            df_detalles.groupby("Metodo_Pago", as_index=False)
+            .agg(
+                Total_Transacciones=("ID_Pedido", "nunique"),
+                Unidades_Vendidas=("Cantidad", "sum"),
+                Recaudacion_Total=("Ingreso_Total", "sum"),
+            )
+        )
+
+        st.success("✅ Datos procesados correctamente sin errores.")
+
+        # Botón para descargar el archivo Excel completo multi-pestaña
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df_detalles.to_excel(
+                writer, sheet_name="Detalle de Transacciones", index=False
+            )
+            df_res_prod.to_excel(
+                writer, sheet_name="Resumen por Producto", index=False
+            )
+            df_res_pedidos.to_excel(
+                writer, sheet_name="Reporte de Pedidos", index=False
+            )
+            df_res_pagos.to_excel(
+                writer, sheet_name="Flujo por Métodos de Pago", index=False
+            )
+
+        excel_data = output.getvalue()
+
         st.download_button(
-            label="⬇️ Descargar Resumen por Producto (Excel .XLSX)",
-            data=excel_bytes_prod,
-            file_name=f"Resumen_Productos_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
+            label="📊 Descargar Libro Ejecutivo Completo (.XLSX Corporativo)",
+            data=excel_data,
+            file_name=f"Reporte_Gerencial_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
 
         st.markdown("---")
-
-        # 3. Inventario y Stock
-        st.subheader("3️⃣ Inventario y Almacén Actual")
-        inv_list = [
-            {"Producto": k, **v} for k, v in st.session_state.inventario.items()
-        ]
-        df_excel_inv = pd.DataFrame(inv_list)
-        st.dataframe(df_excel_inv, use_container_width=True)
-
-        excel_bytes_inv = generar_excel_bytes(df_excel_inv)
-        st.download_button(
-            label="⬇️ Descargar Control de Inventario (Excel .XLSX)",
-            data=excel_bytes_inv,
-            file_name=f"Inventario_Stock_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+        st.subheader("👁️ Vista Previa del Reporte Gerencial")
+        tab_v1, tab_v2, tab_v3 = st.tabs(
+            ["Resumen Productos", "Reporte Pedidos", "Métodos de Pago"]
         )
+        with tab_v1:
+            st.dataframe(df_res_prod, use_container_width=True)
+        with tab_v2:
+            st.dataframe(df_res_pedidos, use_container_width=True)
+        with tab_v3:
+            st.dataframe(df_res_pagos, use_container_width=True)
