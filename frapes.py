@@ -557,7 +557,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
                 values="Ingreso_Total",
                 names="Metodo_Pago",
                 hole=0.5,
-                color_discrete_sequence=["#a855f7", "#00f2fe",="#ff007f"],
+                color_discrete_sequence=["#a855f7", "#00f2fe", "#ff007f"],
             )
             fig_donut.update_traces(textinfo="percent+label")
             fig_donut.update_layout(
