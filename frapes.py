@@ -1,4 +1,5 @@
 from datetime import datetime
+import io
 import json
 import os
 import zoneinfo
@@ -644,12 +645,12 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.plotly_chart(fig_hora, use_container_width=True)
 
 # ---------------------------------------------------------
-# 4. EXPORTAR REPORTES PROFESIONALES PARA EXCEL
+# 4. EXPORTAR REPORTES PROFESIONALES PARA EXCEL (.XLSX)
 # ---------------------------------------------------------
 elif opcion == "📥 Exportar Reportes para Excel":
-    st.header("📥 Exportador de Tablas para Excel y Análisis")
+    st.header("📥 Exportador de Reportes Profesionales (.XLSX)")
     st.write(
-        "Descarga las tablas maestras estructuradas del negocio. Al abrirlas en Excel, podrás crear tus tablas dinámicas de forma inmediata."
+        "Descarga archivos de Excel verdaderos. Cada tabla se abrirá perfectamente ordenada en sus respectivas columnas, con formato profesional y lista para tablas dinámicas."
     )
 
     ventas_validas = [
@@ -685,16 +686,23 @@ elif opcion == "📥 Exportar Reportes para Excel":
 
         df_excel_detalles = pd.DataFrame(detalles_list)
 
+        # Función auxiliar para exportar con openpyxl de forma impecable
+        def generar_excel_bytes(df):
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Reporte")
+            return output.getvalue()
+
         # 1. Tabla de Detalle de Transacciones
         st.subheader("1️⃣ Detalle General de Transacciones")
         st.dataframe(df_excel_detalles, use_container_width=True)
 
-        csv_detalles = df_excel_detalles.to_csv(index=False).encode("utf-8")
+        excel_bytes_detalles = generar_excel_bytes(df_excel_detalles)
         st.download_button(
-            label="⬇️ Descargar Detalle de Ventas (CSV para Excel)",
-            data=csv_detalles,
-            file_name=f"Detalle_Ventas_{ahora_bo.strftime('%Y-%m-%d')}.csv",
-            mime="text/csv",
+            label="⬇️ Descargar Detalle de Ventas (Excel .XLSX)",
+            data=excel_bytes_detalles,
+            file_name=f"Detalle_Ventas_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
 
@@ -714,12 +722,12 @@ elif opcion == "📥 Exportar Reportes para Excel":
         )
         st.dataframe(df_res_prod, use_container_width=True)
 
-        csv_prod = df_res_prod.to_csv(index=False).encode("utf-8")
+        excel_bytes_prod = generar_excel_bytes(df_res_prod)
         st.download_button(
-            label="⬇️ Descargar Resumen por Producto (CSV para Excel)",
-            data=csv_prod,
-            file_name=f"Resumen_Productos_{ahora_bo.strftime('%Y-%m-%d')}.csv",
-            mime="text/csv",
+            label="⬇️ Descargar Resumen por Producto (Excel .XLSX)",
+            data=excel_bytes_prod,
+            file_name=f"Resumen_Productos_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
 
@@ -733,11 +741,11 @@ elif opcion == "📥 Exportar Reportes para Excel":
         df_excel_inv = pd.DataFrame(inv_list)
         st.dataframe(df_excel_inv, use_container_width=True)
 
-        csv_inv = df_excel_inv.to_csv(index=False).encode("utf-8")
+        excel_bytes_inv = generar_excel_bytes(df_excel_inv)
         st.download_button(
-            label="⬇️ Descargar Control de Inventario (CSV para Excel)",
-            data=csv_inv,
-            file_name=f"Inventario_Stock_{ahora_bo.strftime('%Y-%m-%d')}.csv",
-            mime="text/csv",
+            label="⬇️ Descargar Control de Inventario (Excel .XLSX)",
+            data=excel_bytes_inv,
+            file_name=f"Inventario_Stock_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
