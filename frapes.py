@@ -1,7 +1,7 @@
+from datetime import datetime
 import json
 import os
 import zoneinfo
-from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -216,7 +216,9 @@ if opcion == "🛒 Registrar Venta":
                         "costo": info_prod["costo"],
                         "subtotal": info_prod["precio"] * cant,
                         "costo_total": info_prod["costo"] * cant,
-                        "ganancia_item": (info_prod["precio"] - info_prod["costo"])
+                        "ganancia_item": (
+                            info_prod["precio"] - info_prod["costo"]
+                        )
                         * cant,
                         "categoria": info_prod.get("categoria", "General"),
                     }
@@ -233,7 +235,9 @@ if opcion == "🛒 Registrar Venta":
             use_container_width=True,
         )
 
-        subtotal_venta = sum(item["subtotal"] for item in st.session_state.carrito)
+        subtotal_venta = sum(
+            item["subtotal"] for item in st.session_state.carrito
+        )
         costo_venta = sum(item["costo_total"] for item in st.session_state.carrito)
 
         st.markdown(f"### **Total a Cobrar: Bs. {subtotal_venta:.2f}**")
@@ -258,7 +262,11 @@ if opcion == "🛒 Registrar Venta":
                         "cliente": nombre_cliente,
                         "servicio": tipo_servicio,
                         "pago": metodo_pago,
-                        "notas": notas_pedido if notas_pedido else "Sin especificación",
+                        "notas": (
+                            notas_pedido
+                            if notas_pedido
+                            else "Sin especificación"
+                        ),
                         "detalles": st.session_state.carrito.copy(),
                         "total_venta": subtotal_venta,
                         "costo_total": costo_venta,
@@ -300,7 +308,9 @@ if opcion == "🛒 Registrar Venta":
         st.dataframe(df_ventas_hist[cols_existentes], use_container_width=True)
 
         ids_disponibles = [
-            v["id"] for v in st.session_state.ventas if isinstance(v, dict) and "id" in v
+            v["id"]
+            for v in st.session_state.ventas
+            if isinstance(v, dict) and "id" in v
         ]
 
         if ids_disponibles:
@@ -318,22 +328,30 @@ if opcion == "🛒 Registrar Venta":
                 st.write("")
                 if st.button("🗑️ Eliminar Venta", use_container_width=True):
                     venta_target = next(
-                        (v for v in st.session_state.ventas if v.get("id") == id_a_eliminar),
+                        (
+                            v
+                            for v in st.session_state.ventas
+                            if v.get("id") == id_a_eliminar
+                        ),
                         None,
                     )
                     if venta_target:
                         if venta_target.get("estado") == "Completada":
                             for item in venta_target.get("detalles", []):
                                 if item["producto"] in st.session_state.inventario:
-                                    st.session_state.inventario[item["producto"]][
-                                        "stock"
-                                    ] += item.get("cantidad", 0)
+                                    st.session_state.inventario[
+                                        item["producto"]
+                                    ]["stock"] += item.get("cantidad", 0)
 
                         st.session_state.ventas = [
-                            v for v in st.session_state.ventas if v.get("id") != id_a_eliminar
+                            v
+                            for v in st.session_state.ventas
+                            if v.get("id") != id_a_eliminar
                         ]
                         guardar_datos()
-                        st.success(f"Venta #{id_a_eliminar} eliminada correctamente.")
+                        st.success(
+                            f"Venta #{id_a_eliminar} eliminada correctamente."
+                        )
                         st.rerun()
     else:
         st.info("No hay registro de ventas en el sistema.")
@@ -410,44 +428,68 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.rerun()
 
     ventas_validas = [
-        v for v in st.session_state.ventas
-        if isinstance(v, dict) and v.get("estado") == "Completada" and "detalles" in v
+        v
+        for v in st.session_state.ventas
+        if isinstance(v, dict)
+        and v.get("estado") == "Completada"
+        and "detalles" in v
     ]
 
     if not ventas_validas:
-        st.info("💡 No hay ventas registradas aún. Ve a '🛒 Registrar Venta' para añadir pedidos.")
+        st.info(
+            "💡 No hay ventas registradas aún. Ve a '🛒 Registrar Venta' para añadir pedidos."
+        )
     else:
         df_pedidos = pd.DataFrame(ventas_validas)
         detalles_list = []
         for v in ventas_validas:
             for item in v.get("detalles", []):
-                detalles_list.append({
-                    "ID_Pedido": v.get("id", 0),
-                    "Fecha": v.get("fecha", ""),
-                    "Hora_Exacta": v.get("hora", "00:00:00"),
-                    "Hora_Entera": f"{str(v.get('hora', '00:00')).split(':')[0]}:00",
-                    "Cliente": v.get("cliente", "Anónimo"),
-                    "Servicio": v.get("servicio", "Para Llevar"),
-                    "Metodo_Pago": v.get("pago", "Efectivo"),
-                    "Producto": item.get("producto", "Desconocido"),
-                    "Categoria": item.get("categoria", "Frappés"),
-                    "Cantidad": item.get("cantidad", 1),
-                    "Precio_Unit": item.get("precio", 0.0),
-                    "Costo_Unit": item.get("costo", 0.0),
-                    "Ingreso_Total": item.get("subtotal", 0.0),
-                    "Costo_Total": item.get("costo_total", 0.0),
-                    "Ganancia_Neta": item.get("subtotal", 0.0) - item.get("costo_total", 0.0),
-                })
+                detalles_list.append(
+                    {
+                        "ID_Pedido": v.get("id", 0),
+                        "Fecha": v.get("fecha", ""),
+                        "Hora_Exacta": v.get("hora", "00:00:00"),
+                        "Hora_Entera": f"{str(v.get('hora', '00:00')).split(':')[0]}:00",
+                        "Cliente": v.get("cliente", "Anónimo"),
+                        "Servicio": v.get("servicio", "Para Llevar"),
+                        "Metodo_Pago": v.get("pago", "Efectivo"),
+                        "Producto": item.get("producto", "Desconocido"),
+                        "Categoria": item.get("categoria", "Frappés"),
+                        "Cantidad": item.get("cantidad", 1),
+                        "Precio_Unit": item.get("precio", 0.0),
+                        "Costo_Unit": item.get("costo", 0.0),
+                        "Ingreso_Total": item.get("subtotal", 0.0),
+                        "Costo_Total": item.get("costo_total", 0.0),
+                        "Ganancia_Neta": item.get("subtotal", 0.0)
+                        - item.get("costo_total", 0.0),
+                    }
+                )
 
         df_detalles = pd.DataFrame(detalles_list)
 
         # KPIs Principales
         tot_pedidos = len(df_pedidos)
-        tot_ventas = df_pedidos["total_venta"].sum() if "total_venta" in df_pedidos else 0.0
-        tot_costo = df_pedidos["costo_total"].sum() if "costo_total" in df_pedidos else 0.0
-        ganancia_total = df_pedidos["ganancia_neta"].sum() if "ganancia_neta" in df_pedidos else 0.0
-        margen_prom = (ganancia_total / tot_ventas * 100) if tot_ventas > 0 else 0
-        total_items = df_detalles["Cantidad"].sum() if not df_detalles.empty else 0
+        tot_ventas = (
+            df_pedidos["total_venta"].sum()
+            if "total_venta" in df_pedidos
+            else 0.0
+        )
+        tot_costo = (
+            df_pedidos["costo_total"].sum()
+            if "costo_total" in df_pedidos
+            else 0.0
+        )
+        ganancia_total = (
+            df_pedidos["ganancia_neta"].sum()
+            if "ganancia_neta" in df_pedidos
+            else 0.0
+        )
+        margen_prom = (
+            (ganancia_total / tot_ventas * 100) if tot_ventas > 0 else 0
+        )
+        total_items = (
+            df_detalles["Cantidad"].sum() if not df_detalles.empty else 0
+        )
 
         k1, k2, k3, k4, k5, k6 = st.columns(6)
         k1.metric("📦 Pedidos", f"{tot_pedidos}")
@@ -464,24 +506,38 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         with col_c1:
             st.subheader("📈 Tendencia de Ventas y Ganancias")
-            df_linea = df_detalles.groupby("ID_Pedido")[["Ingreso_Total", "Ganancia_Neta"]].sum().reset_index()
-            df_cant_pedido = df_detalles.groupby("ID_Pedido")["Cantidad"].sum().reset_index()
+            df_linea = (
+                df_detalles.groupby("ID_Pedido")[
+                    ["Ingreso_Total", "Ganancia_Neta"]
+                ]
+                .sum()
+                .reset_index()
+            )
+            df_cant_pedido = (
+                df_detalles.groupby("ID_Pedido")["Cantidad"]
+                .sum()
+                .reset_index()
+            )
 
             fig_line = go.Figure()
-            fig_line.add_trace(go.Scatter(
-                x=df_linea["ID_Pedido"],
-                y=df_linea["Ingreso_Total"],
-                mode="lines+markers",
-                name="Ingreso (Bs.)",
-                line=dict(color="#00f2fe", width=3),
-            ))
-            fig_line.add_trace(go.Scatter(
-                x=df_linea["ID_Pedido"],
-                y=df_linea["Ganancia_Neta"],
-                mode="lines+markers",
-                name="Ganancia (Bs.)",
-                line=dict(color="#00ff87", width=3, dash="dash"),
-            ))
+            fig_line.add_trace(
+                go.Scatter(
+                    x=df_linea["ID_Pedido"],
+                    y=df_linea["Ingreso_Total"],
+                    mode="lines+markers",
+                    name="Ingreso (Bs.)",
+                    line=dict(color="#00f2fe", width=3),
+                )
+            )
+            fig_line.add_trace(
+                go.Scatter(
+                    x=df_linea["ID_Pedido"],
+                    y=df_linea["Ganancia_Neta"],
+                    mode="lines+markers",
+                    name="Ganancia (Bs.)",
+                    line=dict(color="#00ff87", width=3, dash="dash"),
+                )
+            )
             fig_line.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
@@ -497,15 +553,21 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.markdown("**📦 Cantidad por pedido**")
             df_cant_pedido.columns = ["N° Pedido", "Cantidad"]
             st.dataframe(
-                df_cant_pedido,
-                hide_index=True,
-                use_container_width=True
+                df_cant_pedido, hide_index=True, use_container_width=True
             )
 
         with col_c2:
             st.subheader("💳 Métodos de Pago")
-            df_pago = df_detalles.groupby("Metodo_Pago")["Ingreso_Total"].sum().reset_index()
-            df_pago_cant = df_detalles.groupby("Metodo_Pago")["Cantidad"].sum().reset_index()
+            df_pago = (
+                df_detalles.groupby("Metodo_Pago")["Ingreso_Total"]
+                .sum()
+                .reset_index()
+            )
+            df_pago_cant = (
+                df_detalles.groupby("Metodo_Pago")["Cantidad"]
+                .sum()
+                .reset_index()
+            )
 
             fig_donut = px.pie(
                 df_pago,
@@ -528,9 +590,7 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.markdown("**🥤 Cantidad por método de pago**")
             df_pago_cant.columns = ["Método de Pago", "Cantidad"]
             st.dataframe(
-                df_pago_cant,
-                hide_index=True,
-                use_container_width=True
+                df_pago_cant, hide_index=True, use_container_width=True
             )
 
         st.markdown("---")
@@ -540,22 +600,34 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         with col_c3:
             st.subheader("📊 Ingresos vs Costos por Producto")
-            df_prod = df_detalles.groupby("Producto")[["Ingreso_Total", "Costo_Total"]].sum().reset_index()
-            df_prod_cant = df_detalles.groupby("Producto")["Cantidad"].sum().reset_index()
+            df_prod = (
+                df_detalles.groupby("Producto")[
+                    ["Ingreso_Total", "Costo_Total"]
+                ]
+                .sum()
+                .reset_index()
+            )
+            df_prod_cant = (
+                df_detalles.groupby("Producto")["Cantidad"].sum().reset_index()
+            )
 
             fig_bar_prod = go.Figure()
-            fig_bar_prod.add_trace(go.Bar(
-                x=df_prod["Producto"],
-                y=df_prod["Ingreso_Total"],
-                name="Ingreso",
-                marker_color="#00f2fe",
-            ))
-            fig_bar_prod.add_trace(go.Bar(
-                x=df_prod["Producto"],
-                y=df_prod["Costo_Total"],
-                name="Costo",
-                marker_color="#ff4757",
-            ))
+            fig_bar_prod.add_trace(
+                go.Bar(
+                    x=df_prod["Producto"],
+                    y=df_prod["Ingreso_Total"],
+                    name="Ingreso",
+                    marker_color="#00f2fe",
+                )
+            )
+            fig_bar_prod.add_trace(
+                go.Bar(
+                    x=df_prod["Producto"],
+                    y=df_prod["Costo_Total"],
+                    name="Costo",
+                    marker_color="#ff4757",
+                )
+            )
             fig_bar_prod.update_layout(
                 barmode="group",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -572,74 +644,21 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.markdown("**🥤 Cantidad vendida por producto**")
             df_prod_cant.columns = ["Producto", "Cantidad"]
             st.dataframe(
-                df_prod_cant,
-                hide_index=True,
-                use_container_width=True
+                df_prod_cant, hide_index=True, use_container_width=True
             )
 
         with col_c4:
             st.subheader("⏰ Ventas por Horas")
-            df_hora = df_detalles.groupby("Hora_Entera")["Ingreso_Total"].sum().reset_index()
-            df_hora_cant = df_detalles.groupby("Hora_Entera")["Cantidad"].sum().reset_index()
+            df_hora = (
+                df_detalles.groupby("Hora_Entera")["Ingreso_Total"]
+                .sum()
+                .reset_index()
+            )
+            df_hora_cant = (
+                df_detalles.groupby("Hora_Entera")["Cantidad"]
+                .sum()
+                .reset_index()
+            )
 
             fig_hora = px.bar(
                 df_hora,
-                x="Hora_Entera",
-                y="Ingreso_Total",
-                text="Ingreso_Total",
-                color_discrete_sequence=["#ff007f"],
-            )
-            fig_hora.update_traces(
-                texttemplate="Bs. %{text:.0f}",
-                textposition="outside",
-                hovertemplate="Hora: %{x}<br>Ventas: Bs. %{y:.2f}<extra></extra>"
-            )
-            fig_hora.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                xaxis=dict(showgrid=False, title="Hora"),
-                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
-            )
-            st.plotly_chart(fig_hora, use_container_width=True)
-
-            st.markdown("**🥤 Cantidad vendida por hora**")
-            df_hora_cant.columns = ["Hora", "Cantidad"]
-            st.dataframe(
-                df_hora_cant,
-                hide_index=True,
-                use_container_width=True
-            )
-
-        # Tabla Interactiva
-        st.markdown("---")
-        st.subheader("🔍 Tabla Dinámica de Transacciones")
-
-        col_fil1, col_fil2 = st.columns(2)
-        with col_fil1:
-            filtro_pago = st.multiselect(
-                "Filtrar por Pago:",
-                options=df_detalles["Metodo_Pago"].unique(),
-                default=df_detalles["Metodo_Pago"].unique(),
-            )
-        with col_fil2:
-            filtro_prod = st.multiselect(
-                "Filtrar por Producto:",
-                options=df_detalles["Producto"].unique(),
-                default=df_detalles["Producto"].unique(),
-            )
-
-        df_filtrado = df_detalles[
-            (df_detalles["Metodo_Pago"].isin(filtro_pago)) &
-            (df_detalles["Producto"].isin(filtro_prod))
-        ]
-
-        st.dataframe(
-            df_filtrado[[
-                "ID_Pedido", "Fecha", "Hora_Exacta", "Cliente", "Servicio",
-                "Metodo_Pago", "Producto", "Cantidad", "Ingreso_Total", "Costo_Total", "Ganancia_Neta"
-            ]],
-            use_container_width=True,
-        )
