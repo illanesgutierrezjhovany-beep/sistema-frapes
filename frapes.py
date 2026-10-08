@@ -148,7 +148,7 @@ opcion = st.sidebar.radio(
         "🛒 Registrar Venta",
         "📦 Inventario y stock",
         "📊 Panel de control e indicadores clave de rendimiento (KPI)",
-        "📥 Exportar Reporte Gerencial Millonario (.XLSX)",
+        "📥 Exportar BI Empresarial Avanzado (.XLSX)",
     ],
 )
 
@@ -650,10 +650,10 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 # ---------------------------------------------------------
 # 4. EXPORTAR REPORTE GERENCIAL CON DASHBOARD EXCEL EXPERTO
 # ---------------------------------------------------------
-elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
-    st.header("📥 Central de Reportes & Dashboard Milionario en Excel")
+elif opcion == "📥 Exportar BI Empresarial Avanzado (.XLSX)":
+    st.header("📥 Central de Reportes & BI Empresarial Avanzado")
     st.write(
-        "Genera un libro corporativo nivel experto con **Dashboard Profesional integrado**, tarjetas de resumen KPI, tablas dinámicas con formato llamativo y **Gráficos de Barras, Anillo, Líneas y Dispersión** incrustados."
+        "Genera un reporte gerencial definitivo para toma de decisiones: **Dashboard Corporativo integral**, reportes diarios detallados, análisis de horas pico, distribución de categorías y métricas con porcentajes exactos."
     )
 
     ventas_validas = [
@@ -664,17 +664,20 @@ elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
 
     if not ventas_validas:
         st.info(
-            "💡 Registra al menos una venta para poder exportar los reportes corporativos."
+            "💡 Registra al menos una venta para poder exportar los reportes empresariales."
         )
     else:
         detalles_list = []
         for v in ventas_validas:
             for item in v.get("detalles", []):
+                hora_str = str(v.get("hora", "00:00"))
+                hora_entera = f"{hora_str.split(':')[0]}:00"
                 detalles_list.append(
                     {
                         "ID_Pedido": v.get("id"),
                         "Fecha": v.get("fecha"),
                         "Hora": v.get("hora"),
+                        "Hora_Entera": hora_entera,
                         "Cliente": v.get("cliente"),
                         "Modalidad": v.get("servicio"),
                         "Metodo_Pago": v.get("pago"),
@@ -691,6 +694,19 @@ elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
 
         df_detalles = pd.DataFrame(detalles_list)
 
+        # Agrupaciones Empresariales
+        df_res_diario = (
+            df_detalles.groupby("Fecha", as_index=False)
+            .agg(
+                Total_Pedidos=("ID_Pedido", "nunique"),
+                Unidades_Vendidas=("Cantidad", "sum"),
+                Ingresos_Totales=("Ingreso_Total", "sum"),
+                Costos_Totales=("Costo_Total", "sum"),
+                Utilidad_Neta=("Ganancia_Neta", "sum"),
+            )
+        )
+        df_res_diario["Margen_Porcentual"] = (df_res_diario["Utilidad_Neta"] / df_res_diario["Ingresos_Totales"])
+        
         df_res_prod = (
             df_detalles.groupby(["Producto", "Categoria"], as_index=False)
             .agg(
@@ -700,9 +716,7 @@ elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
                 Ganancia_Neta=("Ganancia_Neta", "sum"),
             )
         )
-        df_res_prod["Margen_%"] = (
-            df_res_prod["Ganancia_Neta"] / df_res_prod["Ingresos_Totales"] * 100
-        ).round(2)
+        df_res_prod["Margen_%"] = (df_res_prod["Ganancia_Neta"] / df_res_prod["Ingresos_Totales"])
 
         df_res_pedidos = (
             df_detalles.groupby(
@@ -720,41 +734,58 @@ elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
         df_res_pagos = (
             df_detalles.groupby("Metodo_Pago", as_index=False)
             .agg(
-                Total_Transacciones=("ID_Pedido", "nunique"),
-                Unidades_Vendidas=("Cantidad", "sum"),
-                Recaudacion_Total=("Ingreso_Total", "sum"),
+                Transacciones=("ID_Pedido", "nunique"),
+                Recaudacion=("Ingreso_Total", "sum"),
+            )
+        )
+        
+        df_res_cat = (
+            df_detalles.groupby("Categoria", as_index=False)
+            .agg(
+                Ingresos=("Ingreso_Total", "sum")
+            )
+        )
+        
+        df_res_hora = (
+            df_detalles.groupby("Hora_Entera", as_index=False)
+            .agg(
+                Pedidos=("ID_Pedido", "nunique"),
+                Ingresos=("Ingreso_Total", "sum")
             )
         )
 
-        st.success("✅ Datos corporativos listos para exportar.")
+        st.success("✅ Set de datos gerenciales listo para estructurar.")
 
-        if st.button("📊 Generar Libro Excel con Dashboard Milionario", use_container_width=True):
+        if st.button("📊 Generar BI Dashboard Empresarial Completo", use_container_width=True):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                # Escribir hojas de datos estándar
-                df_detalles.to_excel(writer, sheet_name="Detalle de Transacciones", index=False)
-                df_res_prod.to_excel(writer, sheet_name="Resumen por Producto", index=False)
-                df_res_pedidos.to_excel(writer, sheet_name="Reporte de Pedidos", index=False)
-                df_res_pagos.to_excel(writer, sheet_name="Flujo por Métodos de Pago", index=False)
+                # Escribir todas las hojas de datos
+                df_detalles.to_excel(writer, sheet_name="Transacciones Maestro", index=False)
+                df_res_diario.to_excel(writer, sheet_name="Reporte del Día", index=False)
+                df_res_prod.to_excel(writer, sheet_name="Rendimiento Productos", index=False)
+                df_res_pedidos.to_excel(writer, sheet_name="Auditoria de Pedidos", index=False)
+                df_res_pagos.to_excel(writer, sheet_name="Flujo por Pago", index=False)
+                df_res_cat.to_excel(writer, sheet_name="Ventas Categoria", index=False)
+                df_res_hora.to_excel(writer, sheet_name="Tendencia Horaria", index=False)
 
                 workbook = writer.book
 
-                # Función de formato corporativo profesional para hojas de datos
+                # Función de formato corporativo profesional super pulido
                 def aplicar_estilo_corporativo(ws, df, titulo_hoja):
-                    ws.views.sheetView[0].showGridLines = True
-                    fill_title = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                    fill_header = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
-                    fill_zebra = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
+                    ws.views.sheetView[0].showGridLines = False
+                    fill_title = PatternFill(start_color="102A43", end_color="102A43", fill_type="solid")
+                    fill_header = PatternFill(start_color="243B53", end_color="243B53", fill_type="solid")
+                    fill_zebra = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
                     
-                    font_title = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
-                    font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-                    font_normal = Font(name="Calibri", size=11, color="000000")
+                    font_title = Font(name="Segoe UI", size=16, bold=True, color="FFFFFF")
+                    font_header = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+                    font_normal = Font(name="Segoe UI", size=11, color="102A43")
                     
                     border_grid = Border(
-                        left=Side(style='thin', color='D9D9D9'),
-                        right=Side(style='thin', color='D9D9D9'),
-                        top=Side(style='thin', color='D9D9D9'),
-                        bottom=Side(style='thin', color='D9D9D9')
+                        left=Side(style='thin', color='BCCCDC'),
+                        right=Side(style='thin', color='BCCCDC'),
+                        top=Side(style='thin', color='BCCCDC'),
+                        bottom=Side(style='thin', color='BCCCDC')
                     )
 
                     ws.insert_rows(1, 2)
@@ -763,11 +794,11 @@ elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
                     
                     ws.merge_cells(f"A1:{max_col_letter}1")
                     c_title = ws["A1"]
-                    c_title.value = f"📊 {titulo_hoja.upper()} - EMPRESA DE FRAPPÉS"
+                    c_title.value = f"📈 {titulo_hoja.upper()}"
                     c_title.font = font_title
                     c_title.fill = fill_title
                     c_title.alignment = Alignment(horizontal="center", vertical="center")
-                    ws.row_dimensions[1].height = 35
+                    ws.row_dimensions[1].height = 40
 
                     ws.row_dimensions[3].height = 25
                     for col_num in range(1, max_col + 1):
@@ -785,6 +816,17 @@ elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
                             cell.border = border_grid
                             if is_even:
                                 cell.fill = fill_zebra
+                            
+                            # Formatear números si aplica
+                            val = cell.value
+                            if isinstance(val, (int, float)):
+                                col_name = df.columns[col_num-1]
+                                if "Porcentual" in col_name or "Margen_%" in col_name:
+                                    cell.number_format = '0.00%'
+                                elif "Ingreso" in col_name or "Costo" in col_name or "Ganancia" in col_name or "Utilidad" in col_name or "Recaudacion" in col_name:
+                                    cell.number_format = '#,##0.00'
+                                else:
+                                    cell.number_format = '#,##0'
 
                     for col in ws.columns:
                         max_len = 0
@@ -792,154 +834,182 @@ elif opcion == "📥 Exportar Reporte Gerencial Millonario (.XLSX)":
                         for cell in col:
                             if cell.row > 2 and cell.value is not None:
                                 max_len = max(max_len, len(str(cell.value)))
-                        ws.column_dimensions[col_letter].width = max(max_len + 4, 14)
+                        ws.column_dimensions[col_letter].width = max(max_len + 5, 15)
 
-                aplicar_estilo_corporativo(workbook["Detalle de Transacciones"], df_detalles, "Detalle General de Transacciones")
-                aplicar_estilo_corporativo(workbook["Resumen por Producto"], df_res_prod, "Resumen de Rendimiento por Producto")
-                aplicar_estilo_corporativo(workbook["Reporte de Pedidos"], df_res_pedidos, "Control de Pedidos y Clientes")
-                aplicar_estilo_corporativo(workbook["Flujo por Métodos de Pago"], df_res_pagos, "Flujo Financiero por Métodos de Pago")
+                aplicar_estilo_corporativo(workbook["Transacciones Maestro"], df_detalles, "Detalle General de Transacciones")
+                aplicar_estilo_corporativo(workbook["Reporte del Día"], df_res_diario, "Consolidado Diario de Operaciones")
+                aplicar_estilo_corporativo(workbook["Rendimiento Productos"], df_res_prod, "Rendimiento y Margen por Producto")
+                aplicar_estilo_corporativo(workbook["Auditoria de Pedidos"], df_res_pedidos, "Auditoría Financiera por Pedido")
+                aplicar_estilo_corporativo(workbook["Flujo por Pago"], df_res_pagos, "Composición por Método de Pago")
+                aplicar_estilo_corporativo(workbook["Ventas Categoria"], df_res_cat, "Ingresos por Categoría")
+                aplicar_estilo_corporativo(workbook["Tendencia Horaria"], df_res_hora, "Análisis de Ventas por Hora")
 
                 # ==========================================
-                # CREACIÓN DE LA HOJA "Dashboard" CON GRÁFICOS
+                # CREACIÓN DEL MASTER DASHBOARD EMPRESARIAL
                 # ==========================================
-                ws_dash = workbook.create_sheet(title="Dashboard", index=0)
-                ws_dash.views.sheetView[0].showGridLines = True
+                ws_dash = workbook.create_sheet(title="Dashboard Maestro BI", index=0)
+                ws_dash.views.sheetView[0].showGridLines = False
 
-                fill_dash_title = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                fill_card = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+                fill_dash_bg = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
+                fill_dash_title = PatternFill(start_color="102A43", end_color="102A43", fill_type="solid")
+                fill_card = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+                
+                border_card = Border(
+                    left=Side(style='medium', color='102A43'),
+                    right=Side(style='medium', color='102A43'),
+                    top=Side(style='medium', color='102A43'),
+                    bottom=Side(style='medium', color='102A43')
+                )
+
+                # Fondo Dashboard
+                for r in range(1, 40):
+                    for c in range(1, 16):
+                        ws_dash.cell(row=r, column=c).fill = fill_dash_bg
 
                 # Título del Dashboard
-                ws_dash.merge_cells("B2:L2")
+                ws_dash.merge_cells("B2:M2")
                 cell_title = ws_dash["B2"]
-                cell_title.value = "🚀 DASHBOARD EJECUTIVO & ANALÍTICA EXPERTA - SISTEMA POS FRAPPÉS"
-                cell_title.font = Font(name="Calibri", size=16, bold=True, color="FFFFFF")
+                cell_title.value = "🚀 BUSINESS INTELLIGENCE DASHBOARD - SISTEMA FRApPÉS"
+                cell_title.font = Font(name="Segoe UI", size=20, bold=True, color="FFFFFF")
                 cell_title.fill = fill_dash_title
                 cell_title.alignment = Alignment(horizontal="center", vertical="center")
-                ws_dash.row_dimensions[2].height = 40
+                ws_dash.row_dimensions[2].height = 50
 
-                # Tarjetas KPI Superiores
+                # 6 Tarjetas KPI Ejecutivas (B a M)
+                tot_ventas_f = f"=SUM('Transacciones Maestro'!M4:M{len(df_detalles)+3})"
+                tot_costos_f = f"=SUM('Transacciones Maestro'!N4:N{len(df_detalles)+3})"
+                tot_utilidad_f = f"=SUM('Transacciones Maestro'!O4:O{len(df_detalles)+3})"
+                margen_f = f"=IF({tot_ventas_f}=0, 0, {tot_utilidad_f}/{tot_ventas_f})"
+                
                 kpis = [
-                    ("VENTAS TOTALES (Bs.)", f"=SUM('Detalle de Transacciones'!L4:L{len(df_detalles)+3})", "B", "C"),
-                    ("COSTOS TOTALES (Bs.)", f"=SUM('Detalle de Transacciones'!M4:M{len(df_detalles)+3})", "D", "E"),
-                    ("UTILIDAD NETA (Bs.)", f"=SUM('Detalle de Transacciones'!N4:N{len(df_detalles)+3})", "F", "G"),
-                    ("PEDIDOS TOTALES", f"=COUNTA('Reporte de Pedidos'!A4:A{len(df_res_pedidos)+3})", "H", "I"),
+                    ("INGRESOS TOTALES", tot_ventas_f, "B", "C", '#,##0.00'),
+                    ("COSTOS OPERATIVOS", tot_costos_f, "D", "E", '#,##0.00'),
+                    ("UTILIDAD NETA", tot_utilidad_f, "F", "G", '#,##0.00'),
+                    ("MARGEN GLOBAL", margen_f, "H", "I", '0.00%'),
+                    ("PEDIDOS ATENDIDOS", f"=COUNTA('Auditoria de Pedidos'!A4:A{len(df_res_pedidos)+3})", "J", "K", '#,##0'),
+                    ("UNIDADES VENDIDAS", f"=SUM('Transacciones Maestro'!J4:J{len(df_detalles)+3})", "L", "M", '#,##0'),
                 ]
 
-                row_card = 5
+                row_card = 4
                 ws_dash.row_dimensions[row_card].height = 20
-                ws_dash.row_dimensions[row_card+1].height = 30
+                ws_dash.row_dimensions[row_card+1].height = 35
 
-                for label, formula, col1, col2 in kpis:
+                for label, formula, col1, col2, n_format in kpis:
                     ws_dash.merge_cells(f"{col1}{row_card}:{col2}{row_card}")
                     ws_dash.merge_cells(f"{col1}{row_card+1}:{col2}{row_card+1}")
                     
                     c_lbl = ws_dash[f"{col1}{row_card}"]
                     c_lbl.value = label
-                    c_lbl.font = Font(name="Calibri", size=10, bold=True, color="1F4E78")
+                    c_lbl.font = Font(name="Segoe UI", size=10, bold=True, color="627D98")
                     c_lbl.alignment = Alignment(horizontal="center", vertical="center")
                     c_lbl.fill = fill_card
+                    c_lbl.border = Border(top=Side(style='medium', color='102A43'), left=Side(style='medium', color='102A43'), right=Side(style='medium', color='102A43'))
 
                     c_val = ws_dash[f"{col1}{row_card+1}"]
                     c_val.value = formula
-                    c_val.font = Font(name="Calibri", size=13, bold=True, color="2F5597")
+                    c_val.font = Font(name="Segoe UI", size=16, bold=True, color="102A43")
                     c_val.alignment = Alignment(horizontal="center", vertical="center")
                     c_val.fill = fill_card
-                    if "Bs." in label or "NETA" in label or "TOTALES" in label and "PEDIDOS" not in label:
-                        c_val.number_format = "#,##0.00"
-                    else:
-                        c_val.number_format = "#,##0"
+                    c_val.number_format = n_format
+                    c_val.border = Border(bottom=Side(style='medium', color='102A43'), left=Side(style='medium', color='102A43'), right=Side(style='medium', color='102A43'))
 
                 # --------------------------------------------------
-                # INCRUSTAR GRÁFICOS PROFESIONALES DE EXCEL
+                # INCRUSTAR 5 GRÁFICOS ESTRATÉGICOS EMPRESARIALES
                 # --------------------------------------------------
-                ws_prod = workbook["Resumen por Producto"]
-                ws_pagos = workbook["Flujo por Métodos de Pago"]
-                ws_pedidos = workbook["Reporte de Pedidos"]
+                ws_prod = workbook["Rendimiento Productos"]
+                ws_pagos = workbook["Flujo por Pago"]
+                ws_pedidos = workbook["Auditoria de Pedidos"]
+                ws_cat = workbook["Ventas Categoria"]
+                ws_hora = workbook["Tendencia Horaria"]
 
                 # 1. Gráfico de Barras (Ingresos por Producto)
                 chart_bar = BarChart()
                 chart_bar.type = "col"
-                chart_bar.style = 10
-                chart_bar.title = "Ingresos por Producto (Bs.)"
-                chart_bar.y_axis.title = "Bolivianos (Bs.)"
-                chart_bar.x_axis.title = "Producto"
+                chart_bar.style = 11
+                chart_bar.title = "Ingresos y Costos por Producto"
+                chart_bar.y_axis.title = "Moneda (Bs.)"
                 
-                data_bar = Reference(ws_prod, min_col=4, min_row=3, max_col=5, max_row=len(df_res_prod)+3)
+                data_bar = Reference(ws_prod, min_col=3, min_row=3, max_col=4, max_row=len(df_res_prod)+3)
                 cats_bar = Reference(ws_prod, min_col=1, min_row=4, max_row=len(df_res_prod)+3)
                 chart_bar.add_data(data_bar, titles_from_data=True)
                 chart_bar.set_categories(cats_bar)
-                chart_bar.width = 16
+                chart_bar.width = 17
                 chart_bar.height = 10
-                ws_dash.add_chart(chart_bar, "B10")
+                ws_dash.add_chart(chart_bar, "B8")
 
-                # 2. Gráfico de Anillo / Pie (Métodos de Pago)
+                # 2. Gráfico de Anillo (Métodos de Pago)
                 chart_pie = PieChart()
-                chart_pie.title = "Recaudación por Método de Pago"
-                data_pie = Reference(ws_pagos, min_col=3, min_row=3, max_row=len(df_res_pagos)+3)
+                chart_pie.title = "Distribución de Métodos de Pago"
+                data_pie = Reference(ws_pagos, min_col=2, min_row=3, max_row=len(df_res_pagos)+3)
                 cats_pie = Reference(ws_pagos, min_col=1, min_row=4, max_row=len(df_res_pagos)+3)
                 chart_pie.add_data(data_pie, titles_from_data=True)
                 chart_pie.set_categories(cats_pie)
-                chart_pie.width = 16
+                chart_pie.width = 11
                 chart_pie.height = 10
-                ws_dash.add_chart(chart_pie, "J10")
+                ws_dash.add_chart(chart_pie, "I8")
+                
+                # 3. Gráfico de Anillo (Categorías)
+                chart_cat = PieChart()
+                chart_cat.title = "Ingresos por Categoría"
+                data_cat = Reference(ws_cat, min_col=2, min_row=3, max_row=len(df_res_cat)+3)
+                cats_cat = Reference(ws_cat, min_col=1, min_row=4, max_row=len(df_res_cat)+3)
+                chart_cat.add_data(data_cat, titles_from_data=True)
+                chart_cat.set_categories(cats_cat)
+                chart_cat.width = 11
+                chart_cat.height = 10
+                ws_dash.add_chart(chart_cat, "M8")
 
-                # 3. Gráfico de Líneas (Tendencia de Ingresos por Pedido)
+                # 4. Gráfico de Líneas (Tendencia por Hora)
                 chart_line = LineChart()
-                chart_line.title = "Tendencia de Ingresos por Pedido"
+                chart_line.title = "Tendencia de Ingresos por Hora (Picos de Venta)"
                 chart_line.style = 13
                 chart_line.y_axis.title = "Ingreso (Bs.)"
-                chart_line.x_axis.title = "N° Pedido"
                 
-                data_line = Reference(ws_pedidos, min_col=7, min_row=3, max_row=len(df_res_pedidos)+3)
-                cats_line = Reference(ws_pedidos, min_col=1, min_row=4, max_row=len(df_res_pedidos)+3)
+                data_line = Reference(ws_hora, min_col=3, min_row=3, max_row=len(df_res_hora)+3)
+                cats_line = Reference(ws_hora, min_col=1, min_row=4, max_row=len(df_res_hora)+3)
                 chart_line.add_data(data_line, titles_from_data=True)
                 chart_line.set_categories(cats_line)
-                chart_line.width = 16
+                chart_line.width = 17
                 chart_line.height = 10
-                ws_dash.add_chart(chart_line, "B26")
+                ws_dash.add_chart(chart_line, "B24")
 
-                # 4. Gráfico de Dispersión / Scatter (Relación Cantidad vs Ingreso por Pedido)
+                # 5. Gráfico de Dispersión / Scatter (Análisis Costo vs Ingreso)
                 chart_scatter = ScatterChart()
-                chart_scatter.title = "Análisis de Dispersión: Cantidad vs Ingreso"
+                chart_scatter.title = "Análisis de Dispersión: Costo vs Ingreso por Pedido"
                 chart_scatter.style = 2
                 chart_scatter.y_axis.title = "Ingreso Total (Bs.)"
-                chart_scatter.x_axis.title = "Items Totales"
+                chart_scatter.x_axis.title = "Costo del Pedido (Bs.)"
                 
-                xvalues = Reference(ws_pedidos, min_col=7, min_row=4, max_row=len(df_res_pedidos)+3)
-                yvalues = Reference(ws_pedidos, min_col=8, min_row=4, max_row=len(df_res_pedidos)+3)
+                xvalues = Reference(ws_pedidos, min_col=9, min_row=4, max_row=len(df_res_pedidos)+3) # Costo
+                yvalues = Reference(ws_pedidos, min_col=8, min_row=4, max_row=len(df_res_pedidos)+3) # Ingreso
                 series_scatter = Series(yvalues, xvalues, title_from_data=False)
                 chart_scatter.series.append(series_scatter)
                 chart_scatter.width = 16
                 chart_scatter.height = 10
-                ws_dash.add_chart(chart_scatter, "J26")
+                ws_dash.add_chart(chart_scatter, "I24")
 
-                # Autoajustar columnas del Dashboard
-                for col in ws_dash.columns:
-                    max_len = 0
-                    col_letter = get_column_letter(col[0].column)
-                    for cell in col:
-                        if cell.row > 2 and cell.value is not None:
-                            max_len = max(max_len, len(str(cell.value)))
-                    ws_dash.column_dimensions[col_letter].width = max(max_len + 4, 16)
+                # Ajustes finales de ancho de columna para Dashboard
+                for col in ["B","C","D","E","F","G","H","I","J","K","L","M"]:
+                    ws_dash.column_dimensions[col].width = 16
 
             excel_data = output.getvalue()
 
             st.download_button(
-                label="⬇️ Descargar Libro Corporativo con Dashboard & Gráficos (.XLSX)",
+                label="⬇️ Descargar Reporte Gerencial y BI Dashboard (.XLSX)",
                 data=excel_data,
-                file_name=f"Dashboard_Milionario_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
+                file_name=f"BI_Dashboard_Empresarial_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
 
         st.markdown("---")
-        st.subheader("👁️ Vista Previa del Reporte Gerencial")
+        st.subheader("👁️ Vista Previa de Reportes Clave")
         tab_v1, tab_v2, tab_v3 = st.tabs(
-            ["Resumen Productos", "Reporte Pedidos", "Métodos de Pago"]
+            ["Reporte Diario", "Métricas por Producto", "Horas Pico"]
         )
         with tab_v1:
-            st.dataframe(df_res_prod, use_container_width=True)
+            st.dataframe(df_res_diario, use_container_width=True)
         with tab_v2:
-            st.dataframe(df_res_pedidos, use_container_width=True)
+            st.dataframe(df_res_prod, use_container_width=True)
         with tab_v3:
-            st.dataframe(df_res_pagos, use_container_width=True)
+            st.dataframe(df_res_hora, use_container_width=True)
