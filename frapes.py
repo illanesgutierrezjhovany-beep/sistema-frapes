@@ -1,5 +1,4 @@
 from datetime import datetime
-import io
 import json
 import os
 import zoneinfo
@@ -144,7 +143,7 @@ opcion = st.sidebar.radio(
         "🛒 Registrar Venta",
         "📦 Inventario y stock",
         "📊 Panel de control e indicadores clave de rendimiento (KPI)",
-        "📥 Exportar Reporte Excel",
+        "📥 Exportar Reportes para Excel",
     ],
 )
 
@@ -503,7 +502,6 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         st.markdown("---")
 
-        # Fila 1: Gráficas de Análisis
         col_c1, col_c2 = st.columns([3, 2])
 
         with col_c1:
@@ -574,7 +572,6 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
 
         st.markdown("---")
 
-        # Fila 2: Barras de Productos y Horas
         col_c3, col_c4 = st.columns([3, 2])
 
         with col_c3:
@@ -647,102 +644,100 @@ elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
             st.plotly_chart(fig_hora, use_container_width=True)
 
 # ---------------------------------------------------------
-# 4. EXPORTAR REPORTE EXCEL (Multi-pestaña estructurada)
+# 4. EXPORTAR REPORTES PROFESIONALES PARA EXCEL
 # ---------------------------------------------------------
-elif opcion == "📥 Exportar Reporte Excel":
-    st.header("📥 Generador de Reportes Ejecutivos en Excel")
+elif opcion == "📥 Exportar Reportes para Excel":
+    st.header("📥 Exportador de Tablas para Excel y Análisis")
     st.write(
-        "Haz clic en el botón para descargar un archivo Excel (`.xlsx`) estructurado con múltiples pestañas profesionales: **Detalle de Ventas**, **Resumen por Producto**, **Métodos de Pago** y **Control de Inventario**."
+        "Descarga las tablas maestras estructuradas del negocio. Al abrirlas en Excel, podrás crear tus tablas dinámicas de forma inmediata."
     )
 
-    if st.button(
-        "📊 Generar y Descargar Excel Profesional", use_container_width=True
-    ):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            # Pestaña 1: Detalle de Transacciones de Artículos
-            ventas_validas = [
-                v
-                for v in st.session_state.ventas
-                if isinstance(v, dict) and v.get("estado") == "Completada"
-            ]
-            if ventas_validas:
-                detalles_list = []
-                for v in ventas_validas:
-                    for item in v.get("detalles", []):
-                        detalles_list.append(
-                            {
-                                "ID Pedido": v.get("id"),
-                                "Fecha": v.get("fecha"),
-                                "Hora": v.get("hora"),
-                                "Cliente": v.get("cliente"),
-                                "Modalidad": v.get("servicio"),
-                                "Método Pago": v.get("pago"),
-                                "Producto": item.get("producto"),
-                                "Categoría": item.get("categoria"),
-                                "Cantidad": item.get("cantidad"),
-                                "Precio Unit. (Bs.)": item.get("precio"),
-                                "Costo Unit. (Bs.)": item.get("costo"),
-                                "Ingreso Total (Bs.)": item.get("subtotal"),
-                                "Costo Total (Bs.)": item.get("costo_total"),
-                                "Ganancia Neta (Bs.)": item.get(
-                                    "ganancia_item"
-                                ),
-                            }
-                        )
-                df_excel_detalles = pd.DataFrame(detalles_list)
-                df_excel_detalles.to_excel(
-                    writer, sheet_name="Detalle de Ventas", index=False
+    ventas_validas = [
+        v
+        for v in st.session_state.ventas
+        if isinstance(v, dict) and v.get("estado") == "Completada"
+    ]
+
+    if not ventas_validas:
+        st.info("💡 Registra al menos una venta para poder exportar reportes.")
+    else:
+        detalles_list = []
+        for v in ventas_validas:
+            for item in v.get("detalles", []):
+                detalles_list.append(
+                    {
+                        "ID Pedido": v.get("id"),
+                        "Fecha": v.get("fecha"),
+                        "Hora": v.get("hora"),
+                        "Cliente": v.get("cliente"),
+                        "Modalidad": v.get("servicio"),
+                        "Método Pago": v.get("pago"),
+                        "Producto": item.get("producto"),
+                        "Categoría": item.get("categoria"),
+                        "Cantidad": item.get("cantidad"),
+                        "Precio Unit. (Bs.)": item.get("precio"),
+                        "Costo Unit. (Bs.)": item.get("costo"),
+                        "Ingreso Total (Bs.)": item.get("subtotal"),
+                        "Costo Total (Bs.)": item.get("costo_total"),
+                        "Ganancia Neta (Bs.)": item.get("ganancia_item"),
+                    }
                 )
 
-                # Pestaña 2: Resumen por Producto
-                df_res_prod = (
-                    df_excel_detalles.groupby(["Producto", "Categoría"])
-                    .agg(
-                        Cantidad_Vendida=("Cantidad", "sum"),
-                        Ingresos_Totales=("Ingreso_Total", "sum"),
-                        Costos_Totales=("Costo_Total", "sum"),
-                        Ganancia_Total=("Ganancia_Neta", "sum"),
-                    )
-                    .reset_index()
-                )
-                df_res_prod.to_excel(
-                    writer, sheet_name="Resumen por Producto", index=False
-                )
+        df_excel_detalles = pd.DataFrame(detalles_list)
 
-                # Pestaña 3: Resumen por Método de Pago
-                df_res_pago = (
-                    df_excel_detalles.groupby("Método Pago")
-                    .agg(
-                        Transacciones=("ID Pedido", "nunique"),
-                        Cantidad_Items=("Cantidad", "sum"),
-                        Total_Recaudado=("Ingreso_Total", "sum"),
-                    )
-                    .reset_index()
-                )
-                df_res_pago.to_excel(
-                    writer, sheet_name="Métodos de Pago", index=False
-                )
+        # 1. Tabla de Detalle de Transacciones
+        st.subheader("1️⃣ Detalle General de Transacciones")
+        st.dataframe(df_excel_detalles, use_container_width=True)
 
-            # Pestaña 4: Inventario Actual
-            inv_list = [
-                {"Producto": k, **v}
-                for k, v in st.session_state.inventario.items()
-            ]
-            df_excel_inv = pd.DataFrame(inv_list)
-            df_excel_inv.to_excel(
-                writer, sheet_name="Inventario y Stock", index=False
-            )
-
-        processed_data = output.getvalue()
-
-        st.success(
-            "🎉 ¡Reporte Excel generado exitosamente con estructura de nivel gerencial!"
-        )
+        csv_detalles = df_excel_detalles.to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="⬇️ Descargar Archivo Excel (.xlsx)",
-            data=processed_data,
-            file_name=f"Reporte_Negocio_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            label="⬇️ Descargar Detalle de Ventas (CSV para Excel)",
+            data=csv_detalles,
+            file_name=f"Detalle_Ventas_{ahora_bo.strftime('%Y-%m-%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        st.markdown("---")
+
+        # 2. Resumen por Producto
+        st.subheader("2️⃣ Resumen de Rendimiento por Producto")
+        df_res_prod = (
+            df_excel_detalles.groupby(["Producto", "Categoría"])
+            .agg(
+                Cantidad_Vendida=("Cantidad", "sum"),
+                Ingresos_Totales=("Ingreso_Total", "sum"),
+                Costos_Totales=("Costo_Total", "sum"),
+                Ganancia_Total=("Ganancia_Neta", "sum"),
+            )
+            .reset_index()
+        )
+        st.dataframe(df_res_prod, use_container_width=True)
+
+        csv_prod = df_res_prod.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Descargar Resumen por Producto (CSV para Excel)",
+            data=csv_prod,
+            file_name=f"Resumen_Productos_{ahora_bo.strftime('%Y-%m-%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        st.markdown("---")
+
+        # 3. Inventario y Stock
+        st.subheader("3️⃣ Inventario y Almacén Actual")
+        inv_list = [
+            {"Producto": k, **v} for k, v in st.session_state.inventario.items()
+        ]
+        df_excel_inv = pd.DataFrame(inv_list)
+        st.dataframe(df_excel_inv, use_container_width=True)
+
+        csv_inv = df_excel_inv.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Descargar Control de Inventario (CSV para Excel)",
+            data=csv_inv,
+            file_name=f"Inventario_Stock_{ahora_bo.strftime('%Y-%m-%d')}.csv",
+            mime="text/csv",
             use_container_width=True,
         )
