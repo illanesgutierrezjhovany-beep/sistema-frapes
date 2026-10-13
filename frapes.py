@@ -1,1050 +1,1512 @@
-from datetime import datetime
-import io
-import json
-import os
-import zoneinfo
+
+import streamlit as st
 import pandas as pd
-import openpyxl
-from openpyxl.chart import BarChart, DoughnutChart, LineChart, PieChart, Reference, ScatterChart, Series
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from pathlib import Path
+from io import BytesIO
+import json
+import os
 
-# Configuración de zona horaria de Bolivia (BOT - GMT-4)
-ZONA_BOLIVIA = zoneinfo.ZoneInfo("America/La_Paz")
+from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.chart import BarChart, LineChart, PieChart, DoughnutChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 
-def obtener_hora_bo():
-    return datetime.now(ZONA_BOLIVIA)
+# =========================================================
+# 1. CONFIGURACIÓN GENERAL
+# =========================================================
 
-
-# Configuración de la página Streamlit
 st.set_page_config(
-    page_title="Sistema POS & Executive Analytics - Frappés",
+    page_title="Frappés POS | Sistema Ejecutivo",
     page_icon="🥤",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded"
 )
 
-# Estilos CSS Personalizados
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background-color: #0d1117;
-        color: #f0f6fc;
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        font-weight: 800 !important;
-        color: #00f2fe !important;
-    }
-    </style>
-""",
-    unsafe_allow_html=True,
-)
+TZ = ZoneInfo("America/La_Paz")
+DB = Path(__file__).resolve().parent / "frappes_database.xlsx"
 
-# Encabezado con hora oficial de Bolivia
-ahora_bo = obtener_hora_bo()
-fecha_bo_str = ahora_bo.strftime("%A, %d de %B de %Y").capitalize()
-hora_bo_str = ahora_bo.strftime("%H:%M:%S")
+st.markdown("""
+<style>
+.stApp {
+    background-color: #0b1220;
+    color: #f1f5f9;
+}
+[data-testid="stMetric"] {
+    background: linear-gradient(135deg,#172554,#164e63);
+    border: 1px solid #334155;
+    padding: 16px;
+    border-radius: 14px;
+}
+[data-testid="stMetricLabel"] {
+    color: #cbd5e1;
+}
+[data-testid="stMetricValue"] {
+    color: #67e8f9;
+    font-weight: 800;
+}
+h1, h2, h3 {
+    color: #67e8f9;
+}
+.stButton > button {
+    border-radius: 9px;
+    font-weight: 700;
+}
+</style>
+""", unsafe_allow_html=True)
 
-col_rel1, col_rel2 = st.columns([3, 1])
-with col_rel1:
-    st.title("🥤 Sistema POS & Analytics - Frappés")
-with col_rel2:
-    st.metric(
-        label=f"🇧🇴 Bolivia ({fecha_bo_str})",
-        value=hora_bo_str,
-        delta="Hora Oficial (GMT-4)",
-    )
 
-st.markdown("---")
+def ahora():
+    return datetime.now(TZ)
 
-# Base de datos local JSON
-DATA_FILE = "sistema_datos.json"
 
-DEFAULT_INVENTORY = {
+# =========================================================
+# 2. INVENTARIO INICIAL
+# =========================================================
+
+INVENTARIO_INICIAL = {
     "Frappé Clásico Café": {
+        "categoria": "Frappés",
         "precio": 20.0,
         "costo": 7.0,
-        "stock": 50,
-        "categoria": "Frappés",
+        "stock": 50
     },
     "Frappé Oreo Deluxe": {
+        "categoria": "Frappés",
         "precio": 25.0,
         "costo": 9.0,
-        "stock": 40,
-        "categoria": "Frappés",
+        "stock": 40
     },
     "Frappé Caramel Macchiato": {
+        "categoria": "Frappés",
         "precio": 24.0,
         "costo": 8.5,
-        "stock": 30,
-        "categoria": "Frappés",
+        "stock": 30
     },
     "Frappé Matcha Premium": {
+        "categoria": "Frappés",
         "precio": 28.0,
         "costo": 10.0,
-        "stock": 25,
-        "categoria": "Frappés",
+        "stock": 25
     },
     "Bobas de Tapioca": {
+        "categoria": "Extras",
         "precio": 5.0,
         "costo": 1.5,
-        "stock": 100,
-        "categoria": "Extras",
+        "stock": 100
     },
     "Bobas Explosivas Frutilla": {
+        "categoria": "Extras",
         "precio": 6.0,
         "costo": 2.0,
-        "stock": 80,
-        "categoria": "Extras",
+        "stock": 80
     },
     "Chantilly Extra": {
+        "categoria": "Extras",
         "precio": 3.0,
         "costo": 1.0,
-        "stock": 60,
-        "categoria": "Extras",
-    },
+        "stock": 60
+    }
 }
 
 
-def cargar_datos():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {"inventario": DEFAULT_INVENTORY, "ventas": [], "contador_pedido": 1}
+# =========================================================
+# 3. BASE DE DATOS LOCAL EN EXCEL
+# =========================================================
+
+COLUMNAS_VENTAS = [
+    "ID", "Fecha", "Hora", "Cliente", "Modalidad",
+    "Metodo_Pago", "Notas", "Total_Venta", "Costo_Total",
+    "Ganancia_Neta", "Estado", "Detalles_JSON"
+]
+
+COLUMNAS_DETALLES = [
+    "ID_Pedido", "Fecha", "Hora", "Cliente",
+    "Modalidad", "Metodo_Pago", "Producto", "Categoria",
+    "Cantidad", "Precio_Unitario", "Costo_Unitario",
+    "Ingreso_Total", "Costo_Total", "Ganancia_Neta"
+]
 
 
-def guardar_datos():
-    data = {
-        "inventario": st.session_state.inventario,
-        "ventas": st.session_state.ventas,
-        "contador_pedido": st.session_state.contador_pedido,
-    }
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+def cargar_db():
+    if not DB.exists():
+        return INVENTARIO_INICIAL.copy(), [], 1
+
+    try:
+        inventario = {}
+        ventas = []
+
+        xls = pd.ExcelFile(DB)
+
+        if "Inventario" in xls.sheet_names:
+            df_inv = pd.read_excel(DB, sheet_name="Inventario")
+
+            for _, r in df_inv.iterrows():
+                nombre = str(r["Producto"])
+
+                if nombre and nombre != "nan":
+                    inventario[nombre] = {
+                        "categoria": str(r.get("Categoria", "Frappés")),
+                        "precio": float(r.get("Precio", 0)),
+                        "costo": float(r.get("Costo", 0)),
+                        "stock": int(r.get("Stock", 0))
+                    }
+
+        if "Ventas" in xls.sheet_names:
+            df_ventas = pd.read_excel(DB, sheet_name="Ventas")
+
+            for _, r in df_ventas.iterrows():
+                try:
+                    detalles = json.loads(str(r.get("Detalles_JSON", "[]")))
+
+                    ventas.append({
+                        "id": int(r["ID"]),
+                        "fecha": str(r["Fecha"])[:10],
+                        "hora": str(r["Hora"]),
+                        "cliente": str(r["Cliente"]),
+                        "servicio": str(r["Modalidad"]),
+                        "pago": str(r["Metodo_Pago"]),
+                        "notas": str(r.get("Notas", "")),
+                        "total_venta": float(r["Total_Venta"]),
+                        "costo_total": float(r["Costo_Total"]),
+                        "ganancia_neta": float(r["Ganancia_Neta"]),
+                        "estado": str(r["Estado"]),
+                        "detalles": detalles
+                    })
+                except (ValueError, TypeError, KeyError):
+                    continue
+
+        if not inventario:
+            inventario = INVENTARIO_INICIAL.copy()
+
+        siguiente_id = max(
+            [v["id"] for v in ventas] + [0]
+        ) + 1
+
+        return inventario, ventas, siguiente_id
+
+    except Exception as e:
+        st.error(
+            f"No se pudo leer la base de datos: {e}. "
+            "Cierra el archivo Excel si está abierto y vuelve a intentar."
+        )
+        return INVENTARIO_INICIAL.copy(), [], 1
 
 
-if "datos_cargados" not in st.session_state:
-    data = cargar_datos()
-    st.session_state.inventario = data.get("inventario", DEFAULT_INVENTORY)
-    st.session_state.ventas = data.get("ventas", [])
-    st.session_state.contador_pedido = data.get("contador_pedido", 1)
+def guardar_db():
+    inventario = st.session_state.inventario
+    ventas = st.session_state.ventas
+
+    df_inv = pd.DataFrame([
+        {
+            "Producto": nombre,
+            "Categoria": p["categoria"],
+            "Precio": p["precio"],
+            "Costo": p["costo"],
+            "Stock": p["stock"]
+        }
+        for nombre, p in inventario.items()
+    ])
+
+    filas_ventas = []
+    filas_detalles = []
+
+    for v in ventas:
+        filas_ventas.append({
+            "ID": v["id"],
+            "Fecha": v["fecha"],
+            "Hora": v["hora"],
+            "Cliente": v["cliente"],
+            "Modalidad": v["servicio"],
+            "Metodo_Pago": v["pago"],
+            "Notas": v.get("notas", ""),
+            "Total_Venta": v["total_venta"],
+            "Costo_Total": v["costo_total"],
+            "Ganancia_Neta": v["ganancia_neta"],
+            "Estado": v["estado"],
+            "Detalles_JSON": json.dumps(
+                v["detalles"], ensure_ascii=False
+            )
+        })
+
+        for item in v.get("detalles", []):
+            filas_detalles.append({
+                "ID_Pedido": v["id"],
+                "Fecha": v["fecha"],
+                "Hora": v["hora"],
+                "Cliente": v["cliente"],
+                "Modalidad": v["servicio"],
+                "Metodo_Pago": v["pago"],
+                "Producto": item["producto"],
+                "Categoria": item["categoria"],
+                "Cantidad": item["cantidad"],
+                "Precio_Unitario": item["precio"],
+                "Costo_Unitario": item["costo"],
+                "Ingreso_Total": item["subtotal"],
+                "Costo_Total": item["costo_total"],
+                "Ganancia_Neta": item["ganancia_item"]
+            })
+
+    df_ventas = pd.DataFrame(filas_ventas, columns=COLUMNAS_VENTAS)
+    df_detalles = pd.DataFrame(
+        filas_detalles, columns=COLUMNAS_DETALLES
+    )
+
+    temporal = DB.with_name("frappes_database_temp.xlsx")
+
+    try:
+        with pd.ExcelWriter(temporal, engine="openpyxl") as writer:
+            df_inv.to_excel(writer, sheet_name="Inventario", index=False)
+            df_ventas.to_excel(writer, sheet_name="Ventas", index=False)
+            df_detalles.to_excel(
+                writer, sheet_name="Detalle Ventas", index=False
+            )
+
+            for ws in writer.book.worksheets:
+                ws.freeze_panes = "A2"
+                ws.sheet_view.showGridLines = False
+
+                for c in ws[1]:
+                    c.fill = PatternFill("solid", fgColor="16324F")
+                    c.font = Font(bold=True, color="FFFFFF")
+                    c.alignment = Alignment(
+                        horizontal="center", vertical="center"
+                    )
+
+                for col in ws.columns:
+                    letra = get_column_letter(col[0].column)
+                    ancho = max(
+                        [
+                            len(str(c.value))
+                            if c.value is not None else 0
+                            for c in col
+                        ] + [12]
+                    )
+                    ws.column_dimensions[letra].width = min(
+                        max(ancho + 3, 14), 35
+                    )
+
+        os.replace(temporal, DB)
+
+    except PermissionError:
+        if temporal.exists():
+            temporal.unlink(missing_ok=True)
+        raise PermissionError(
+            "Cierra frappes_database.xlsx en Excel y vuelve a guardar."
+        )
+
+
+def obtener_detalles():
+    filas = []
+
+    for v in st.session_state.ventas:
+        if v.get("estado") != "Completada":
+            continue
+
+        for item in v.get("detalles", []):
+            filas.append({
+                "ID_Pedido": v["id"],
+                "Fecha": v["fecha"],
+                "Hora": v["hora"],
+                "Hora_Entera": str(v["hora"])[:2] + ":00",
+                "Cliente": v["cliente"],
+                "Modalidad": v["servicio"],
+                "Metodo_Pago": v["pago"],
+                "Producto": item["producto"],
+                "Categoria": item["categoria"],
+                "Cantidad": item["cantidad"],
+                "Precio_Unitario": item["precio"],
+                "Costo_Unitario": item["costo"],
+                "Ingreso_Total": item["subtotal"],
+                "Costo_Total": item["costo_total"],
+                "Ganancia_Neta": item["ganancia_item"]
+            })
+
+    return pd.DataFrame(filas, columns=[
+        "ID_Pedido", "Fecha", "Hora", "Hora_Entera",
+        "Cliente", "Modalidad", "Metodo_Pago", "Producto",
+        "Categoria", "Cantidad", "Precio_Unitario",
+        "Costo_Unitario", "Ingreso_Total", "Costo_Total",
+        "Ganancia_Neta"
+    ])
+
+
+def estilo_figura(fig):
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#e2e8f0"),
+        margin=dict(l=15, r=15, t=50, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        hoverlabel=dict(
+            bgcolor="#172554",
+            font_color="white"
+        )
+    )
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(gridcolor="#334155")
+    return fig
+
+
+# =========================================================
+# 4. CARGAR SESIÓN
+# =========================================================
+
+if "inicializado" not in st.session_state:
+    inv, ventas, siguiente = cargar_db()
+
+    st.session_state.inventario = inv
+    st.session_state.ventas = ventas
+    st.session_state.siguiente_id = siguiente
     st.session_state.carrito = []
-    st.session_state.datos_cargados = True
+    st.session_state.inicializado = True
 
-# Menú lateral
-st.sidebar.title("🥤 Menú Principal")
-opcion = st.sidebar.radio(
-    "Selecciona una opción:",
-    [
-        "🛒 Registrar Venta",
-        "📦 Inventario y stock",
-        "📊 Panel de control e indicadores clave de rendimiento (KPI)",
-        "📥 Exportar Suite BI Nivel Inversión (.XLSX)",
-    ],
+fecha_hora = ahora()
+
+st.title("🥤 FRAPPÉS POS")
+st.caption(
+    "Sistema de punto de venta y analítica empresarial · "
+    + fecha_hora.strftime("%d/%m/%Y %H:%M:%S")
+    + " · Bolivia GMT-4"
 )
 
-# ---------------------------------------------------------
-# 1. REGISTRAR VENTA
-# ---------------------------------------------------------
-if opcion == "🛒 Registrar Venta":
-    st.header("🛒 Registro POS de Ventas")
+st.sidebar.title("🥤 MENÚ PRINCIPAL")
 
-    col_cli1, col_cli2, col_cli3 = st.columns([2, 1, 1])
-    with col_cli1:
-        nombre_cliente = st.text_input(
-            "Nombre del Cliente:", placeholder="Ej: Maria Lopez"
-        )
-    with col_cli2:
-        tipo_servicio = st.selectbox(
-            "Modalidad:", ["Para Llevar", "Para Comer Aquí"]
-        )
-    with col_cli3:
-        metodo_pago = st.selectbox(
-            "Método de Pago:", ["Efectivo", "QR / Transferencia", "Tarjeta"]
-        )
+menu = st.sidebar.radio(
+    "Selecciona un módulo",
+    [
+        "🛒 Registrar venta",
+        "📦 Inventario",
+        "📊 Dashboard ejecutivo",
+        "🗄️ Base de datos Excel",
+        "📤 Exportar reporte BI"
+    ]
+)
 
-    notas_pedido = st.text_input(
-        "Indicaciones Especiales / Barista:",
-        placeholder="Ej: Poco hielo, extra crema...",
+st.sidebar.divider()
+st.sidebar.caption("💾 Almacenamiento local")
+st.sidebar.code(str(DB))
+
+
+# =========================================================
+# 5. REGISTRAR VENTA
+# =========================================================
+
+if menu == "🛒 Registrar venta":
+    st.header("🛒 Punto de venta")
+
+    c1, c2, c3 = st.columns([2, 1, 1])
+
+    cliente = c1.text_input("Nombre del cliente")
+    modalidad = c2.selectbox(
+        "Modalidad", ["Para Llevar", "Para Comer Aquí"]
+    )
+    metodo_pago = c3.selectbox(
+        "Método de pago",
+        ["Efectivo", "QR / Transferencia", "Tarjeta"]
     )
 
-    st.markdown("---")
-    st.subheader("Añadir Productos")
+    notas = st.text_input("Notas de preparación")
 
-    cat_seleccionada = st.radio(
-        "Categoría:", ["Todas", "Frappés", "Extras"], horizontal=True
+    categoria = st.radio(
+        "Categoría de productos",
+        ["Todas", "Frappés", "Extras"],
+        horizontal=True
     )
 
-    items_filtrados = {
-        k: v
-        for k, v in st.session_state.inventario.items()
-        if cat_seleccionada == "Todas" or v.get("categoria") == cat_seleccionada
-    }
+    productos = [
+        nombre for nombre, p in st.session_state.inventario.items()
+        if categoria == "Todas" or p["categoria"] == categoria
+    ]
 
-    if items_filtrados:
-        col_prod1, col_prod2, col_prod3 = st.columns([2, 1, 1])
+    if productos:
+        c1, c2, c3 = st.columns([3, 1, 1])
 
-        with col_prod1:
-            prod_nom = st.selectbox("Producto:", list(items_filtrados.keys()))
+        producto = c1.selectbox("Producto", productos)
+        info = st.session_state.inventario[producto]
 
-        info_prod = st.session_state.inventario[prod_nom]
+        c2.metric("Precio", f"Bs. {info['precio']:.2f}")
+        c2.caption(f"Stock: {info['stock']}")
 
-        with col_prod2:
-            st.caption(f"Stock: **{info_prod.get('stock', 0)}**")
-            st.caption(f"Precio: **Bs. {info_prod.get('precio', 0.0):.2f}**")
+        cantidad = c3.number_input(
+            "Cantidad",
+            min_value=1,
+            max_value=max(1, int(info["stock"])),
+            value=1,
+            step=1,
+            disabled=info["stock"] <= 0
+        )
 
-        with col_prod3:
-            cant = st.number_input(
-                "Cantidad:",
-                min_value=1,
-                max_value=max(1, info_prod.get("stock", 1)),
-                value=1,
+        if st.button(
+            "➕ Añadir al carrito", use_container_width=True
+        ):
+            en_carrito = sum(
+                x["cantidad"] for x in st.session_state.carrito
+                if x["producto"] == producto
             )
 
-        if st.button("➕ Agregar al Carrito", use_container_width=True):
-            if info_prod.get("stock", 0) < cant:
-                st.error("❌ Stock insuficiente.")
+            if info["stock"] <= 0:
+                st.error("Este producto está agotado.")
+            elif en_carrito + cantidad > info["stock"]:
+                st.error("La cantidad supera el stock disponible.")
             else:
-                st.session_state.carrito.append(
-                    {
-                        "producto": prod_nom,
-                        "cantidad": cant,
-                        "precio": info_prod["precio"],
-                        "costo": info_prod["costo"],
-                        "subtotal": info_prod["precio"] * cant,
-                        "costo_total": info_prod["costo"] * cant,
-                        "ganancia_item": (
-                            info_prod["precio"] - info_prod["costo"]
-                        )
-                        * cant,
-                        "categoria": info_prod.get("categoria", "General"),
-                    }
-                )
-                st.success(f"Agregado: {prod_nom} (x{cant})")
+                st.session_state.carrito.append({
+                    "producto": producto,
+                    "categoria": info["categoria"],
+                    "cantidad": int(cantidad),
+                    "precio": info["precio"],
+                    "costo": info["costo"],
+                    "subtotal": info["precio"] * cantidad,
+                    "costo_total": info["costo"] * cantidad,
+                    "ganancia_item": (
+                        info["precio"] - info["costo"]
+                    ) * cantidad
+                })
+                st.success("Producto añadido.")
+                st.rerun()
 
     if st.session_state.carrito:
-        st.markdown("---")
-        st.subheader("🛒 Resumen del Carrito")
+        st.divider()
+        st.subheader("🛒 Carrito de compra")
 
-        df_cart = pd.DataFrame(st.session_state.carrito)
+        df_carrito = pd.DataFrame(st.session_state.carrito)
+
         st.dataframe(
-            df_cart[["producto", "cantidad", "precio", "subtotal"]],
+            df_carrito[
+                ["producto", "cantidad", "precio", "subtotal"]
+            ],
             use_container_width=True,
+            hide_index=True
         )
 
-        subtotal_venta = sum(
-            item["subtotal"] for item in st.session_state.carrito
+        total = sum(x["subtotal"] for x in st.session_state.carrito)
+        costo_total = sum(
+            x["costo_total"] for x in st.session_state.carrito
         )
-        costo_venta = sum(item["costo_total"] for item in st.session_state.carrito)
 
-        st.markdown(f"### **Total a Cobrar: Bs. {subtotal_venta:.2f}**")
+        a, b, c = st.columns(3)
+        a.metric("Total a cobrar", f"Bs. {total:.2f}")
+        b.metric("Costo estimado", f"Bs. {costo_total:.2f}")
+        c.metric("Utilidad estimada", f"Bs. {total-costo_total:.2f}")
 
-        col_b1, col_b2 = st.columns(2)
-        with col_b1:
-            if st.button("✅ Confirmar y Registrar Venta", use_container_width=True):
-                if not nombre_cliente.strip():
-                    st.warning("⚠️ Ingresa el nombre del cliente.")
+        a, b = st.columns(2)
+
+        if a.button(
+            "✅ Confirmar venta", use_container_width=True
+        ):
+            if not cliente.strip():
+                st.warning("Ingresa el nombre del cliente.")
+            else:
+                insuficiente = any(
+                    st.session_state.inventario[x["producto"]]["stock"]
+                    < x["cantidad"]
+                    for x in st.session_state.carrito
+                )
+
+                if insuficiente:
+                    st.error("Stock insuficiente para confirmar.")
                 else:
-                    id_pedido = st.session_state.contador_pedido
+                    venta = {
+                        "id": st.session_state.siguiente_id,
+                        "fecha": fecha_hora.strftime("%Y-%m-%d"),
+                        "hora": fecha_hora.strftime("%H:%M:%S"),
+                        "cliente": cliente.strip(),
+                        "servicio": modalidad,
+                        "pago": metodo_pago,
+                        "notas": notas or "Sin especificación",
+                        "detalles": [
+                            item.copy()
+                            for item in st.session_state.carrito
+                        ],
+                        "total_venta": total,
+                        "costo_total": costo_total,
+                        "ganancia_neta": total - costo_total,
+                        "estado": "Completada"
+                    }
 
                     for item in st.session_state.carrito:
-                        st.session_state.inventario[item["producto"]][
-                            "stock"
-                        ] -= item["cantidad"]
+                        st.session_state.inventario[
+                            item["producto"]
+                        ]["stock"] -= item["cantidad"]
 
-                    venta_reg = {
-                        "id": id_pedido,
-                        "fecha": ahora_bo.strftime("%Y-%m-%d"),
-                        "hora": ahora_bo.strftime("%H:%M:%S"),
-                        "cliente": nombre_cliente,
-                        "servicio": tipo_servicio,
-                        "pago": metodo_pago,
-                        "notas": (
-                            notas_pedido
-                            if notas_pedido
-                            else "Sin especificación"
-                        ),
-                        "detalles": st.session_state.carrito.copy(),
-                        "total_venta": subtotal_venta,
-                        "costo_total": costo_venta,
-                        "ganancia_neta": subtotal_venta - costo_venta,
-                        "estado": "Completada",
-                    }
-
-                    st.session_state.ventas.append(venta_reg)
-                    st.session_state.contador_pedido += 1
+                    st.session_state.ventas.append(venta)
+                    st.session_state.siguiente_id += 1
                     st.session_state.carrito = []
-                    guardar_datos()
-                    st.success(f"🎉 Venta #{id_pedido} registrada exitosamente.")
-                    st.rerun()
 
-        with col_b2:
-            if st.button("🗑️ Vaciar Carrito", use_container_width=True):
-                st.session_state.carrito = []
-                st.rerun()
+                    try:
+                        guardar_db()
+                        st.success("Venta registrada y guardada en Excel.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(
+                            f"No se pudo guardar en Excel: {e}. "
+                            "Revisa el archivo de base de datos."
+                        )
 
-    st.markdown("---")
-    st.subheader("📋 Ventas Recientes & Gestión de Pedidos")
+        if b.button("🗑️ Vaciar carrito", use_container_width=True):
+            st.session_state.carrito = []
+            st.rerun()
+
+    st.divider()
+    st.subheader("📋 Historial de ventas")
 
     if st.session_state.ventas:
-        df_ventas_hist = pd.DataFrame(st.session_state.ventas)
-        cols_deseadas = [
-            "id",
-            "fecha",
-            "hora",
-            "cliente",
-            "servicio",
-            "pago",
-            "total_venta",
-            "estado",
-        ]
-        cols_existentes = [
-            c for c in cols_deseadas if c in df_ventas_hist.columns
-        ]
-
-        st.dataframe(df_ventas_hist[cols_existentes], use_container_width=True)
-
-        ids_disponibles = [
-            v["id"]
+        df_historial = pd.DataFrame([
+            {
+                "ID": v["id"],
+                "Fecha": v["fecha"],
+                "Hora": v["hora"],
+                "Cliente": v["cliente"],
+                "Modalidad": v["servicio"],
+                "Pago": v["pago"],
+                "Total (Bs.)": v["total_venta"],
+                "Estado": v["estado"]
+            }
             for v in st.session_state.ventas
-            if isinstance(v, dict) and "id" in v
-        ]
+        ])
 
-        if ids_disponibles:
-            col_del1, col_del2 = st.columns([2, 1])
+        st.dataframe(
+            df_historial.sort_values("ID", ascending=False),
+            use_container_width=True,
+            hide_index=True
+        )
 
-            with col_del1:
-                id_a_eliminar = st.selectbox(
-                    "Selecciona el ID de la Venta a Eliminar:",
-                    options=ids_disponibles,
-                    index=len(ids_disponibles) - 1,
-                )
+        ids = [v["id"] for v in st.session_state.ventas]
 
-            with col_del2:
-                st.write("")
-                st.write("")
-                if st.button("🗑️ Eliminar Venta", use_container_width=True):
-                    venta_target = next(
-                        (
-                            v
-                            for v in st.session_state.ventas
-                            if v.get("id") == id_a_eliminar
-                        ),
-                        None,
+        with st.expander("🗑️ Eliminar una venta"):
+            id_eliminar = st.selectbox(
+                "Selecciona el pedido",
+                ids,
+                key="id_eliminar"
+            )
+
+            confirmar = st.checkbox(
+                "Confirmo eliminar la venta y restituir el stock."
+            )
+
+            if st.button("Eliminar venta seleccionada"):
+                if not confirmar:
+                    st.warning("Confirma la operación primero.")
+                else:
+                    venta = next(
+                        v for v in st.session_state.ventas
+                        if v["id"] == id_eliminar
                     )
-                    if venta_target:
-                        if venta_target.get("estado") == "Completada":
-                            for item in venta_target.get("detalles", []):
-                                if item["producto"] in st.session_state.inventario:
-                                    st.session_state.inventario[
-                                        item["producto"]
-                                    ]["stock"] += item.get("cantidad", 0)
 
-                        st.session_state.ventas = [
-                            v
-                            for v in st.session_state.ventas
-                            if v.get("id") != id_a_eliminar
-                        ]
-                        guardar_datos()
-                        st.success(
-                            f"Venta #{id_a_eliminar} eliminada correctamente."
-                        )
+                    if venta["estado"] == "Completada":
+                        for item in venta["detalles"]:
+                            nombre = item["producto"]
+                            if nombre in st.session_state.inventario:
+                                st.session_state.inventario[nombre][
+                                    "stock"
+                                ] += item["cantidad"]
+
+                    st.session_state.ventas = [
+                        v for v in st.session_state.ventas
+                        if v["id"] != id_eliminar
+                    ]
+
+                    try:
+                        guardar_db()
+                        st.success("Venta eliminada y stock restituido.")
                         st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar: {e}")
     else:
-        st.info("No hay registro de ventas en el sistema.")
+        st.info("Todavía no hay ventas registradas.")
 
-# ---------------------------------------------------------
-# 2. INVENTARIO Y STOCK
-# ---------------------------------------------------------
-elif opcion == "📦 Inventario y stock":
-    st.header("📦 Control y Gestión de Stock")
 
-    inv_list = [
-        {"Producto": k, **v} for k, v in st.session_state.inventario.items()
-    ]
-    df_inv = pd.DataFrame(inv_list)
+# =========================================================
+# 6. INVENTARIO
+# =========================================================
+
+elif menu == "📦 Inventario":
+    st.header("📦 Control y gestión de inventario")
+
+    df_inv = pd.DataFrame([
+        {
+            "Producto": n,
+            "Categoría": p["categoria"],
+            "Precio (Bs.)": p["precio"],
+            "Costo (Bs.)": p["costo"],
+            "Stock": p["stock"],
+            "Utilidad por unidad": p["precio"] - p["costo"]
+        }
+        for n, p in st.session_state.inventario.items()
+    ])
+
+    agotados = int((df_inv["Stock"] == 0).sum())
+    bajo_stock = int(
+        ((df_inv["Stock"] > 0) & (df_inv["Stock"] <= 5)).sum()
+    )
+
+    a, b, c = st.columns(3)
+    a.metric("Productos", len(df_inv))
+    b.metric("Con stock bajo", bajo_stock)
+    c.metric("Agotados", agotados)
 
     st.dataframe(
-        df_inv[["Producto", "categoria", "precio", "costo", "stock"]],
+        df_inv.style.format({
+            "Precio (Bs.)": "Bs. {:.2f}",
+            "Costo (Bs.)": "Bs. {:.2f}",
+            "Utilidad por unidad": "Bs. {:.2f}"
+        }),
         use_container_width=True,
+        hide_index=True
     )
 
-    st.markdown("---")
-    st.subheader("✏️ Gestión de Productos")
-
-    tab1, tab2 = st.tabs(["Ajustar Stock", "Agregar Producto Nuevo"])
+    tab1, tab2 = st.tabs(["✏️ Editar producto", "➕ Nuevo producto"])
 
     with tab1:
-        prod_edit = st.selectbox(
-            "Seleccionar Producto:", list(st.session_state.inventario.keys())
+        nombre = st.selectbox(
+            "Producto a editar",
+            list(st.session_state.inventario.keys())
         )
-        nuevo_stock = st.number_input(
-            "Nuevo Stock Disponible:",
+
+        p = st.session_state.inventario[nombre]
+
+        a, b, c = st.columns(3)
+
+        nuevo_stock = a.number_input(
+            "Stock disponible",
             min_value=0,
-            value=st.session_state.inventario[prod_edit]["stock"],
+            value=int(p["stock"]),
+            step=1
         )
-        if st.button("Guardar Stock"):
-            st.session_state.inventario[prod_edit]["stock"] = nuevo_stock
-            guardar_datos()
-            st.success("Stock actualizado.")
-            st.rerun()
+
+        nuevo_precio = b.number_input(
+            "Precio de venta (Bs.)",
+            min_value=0.0,
+            value=float(p["precio"]),
+            step=0.5,
+            key="editar_precio"
+        )
+
+        nuevo_costo = c.number_input(
+            "Costo (Bs.)",
+            min_value=0.0,
+            value=float(p["costo"]),
+            step=0.5,
+            key="editar_costo"
+        )
+
+        nueva_categoria = st.selectbox(
+            "Categoría del producto",
+            ["Frappés", "Extras"],
+            index=0 if p["categoria"] == "Frappés" else 1,
+            key="editar_categoria"
+        )
+
+        if st.button("💾 Guardar modificaciones"):
+            p.update({
+                "stock": int(nuevo_stock),
+                "precio": float(nuevo_precio),
+                "costo": float(nuevo_costo),
+                "categoria": nueva_categoria
+            })
+
+            try:
+                guardar_db()
+                st.success("Producto actualizado.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al guardar: {e}")
 
     with tab2:
-        nuevo_nom = st.text_input("Nombre del Producto:")
-        nueva_cat = st.selectbox("Categoría:", ["Frappés", "Extras"])
-        nuevo_p = st.number_input("Precio Venta (Bs.):", min_value=0.0, value=20.0)
-        nuevo_c = st.number_input(
-            "Costo Producción (Bs.):", min_value=0.0, value=7.0
+        nombre_nuevo = st.text_input(
+            "Nombre del nuevo producto"
         )
-        nuevo_s = st.number_input("Stock Inicial:", min_value=0, value=50)
 
-        if st.button("Crear Producto"):
-            if nuevo_nom:
-                st.session_state.inventario[nuevo_nom] = {
-                    "precio": nuevo_p,
-                    "costo": nuevo_c,
-                    "stock": nuevo_s,
-                    "categoria": nueva_cat,
+        cat_nueva = st.selectbox(
+            "Categoría", ["Frappés", "Extras"], key="nueva_categoria"
+        )
+
+        precio_nuevo = st.number_input(
+            "Precio de venta",
+            min_value=0.0,
+            value=20.0,
+            key="nuevo_precio"
+        )
+
+        costo_nuevo = st.number_input(
+            "Costo de producción",
+            min_value=0.0,
+            value=7.0,
+            key="nuevo_costo"
+        )
+
+        stock_nuevo = st.number_input(
+            "Stock inicial",
+            min_value=0,
+            value=20,
+            step=1,
+            key="nuevo_stock"
+        )
+
+        if st.button("➕ Crear producto"):
+            nombre_nuevo = nombre_nuevo.strip()
+
+            if not nombre_nuevo:
+                st.error("Escribe un nombre.")
+            elif nombre_nuevo in st.session_state.inventario:
+                st.error("El producto ya existe.")
+            else:
+                st.session_state.inventario[nombre_nuevo] = {
+                    "categoria": cat_nueva,
+                    "precio": float(precio_nuevo),
+                    "costo": float(costo_nuevo),
+                    "stock": int(stock_nuevo)
                 }
-                guardar_datos()
-                st.success("Producto creado con éxito.")
-                st.rerun()
 
-# ---------------------------------------------------------
-# 3. DASHBOARD Y ANALÍTICA EXECUTIVE BI
-# ---------------------------------------------------------
-elif opcion == "📊 Panel de control e indicadores clave de rendimiento (KPI)":
-    st.header("🚀 Executive Business Intelligence & Analytics Dashboard")
+                try:
+                    guardar_db()
+                    st.success("Producto creado.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
 
-    col_top1, col_top2 = st.columns([4, 1])
-    with col_top2:
-        if st.button("⚠️ Resetear BD", help="Limpia la base de datos de ventas"):
-            st.session_state.ventas = []
-            st.session_state.contador_pedido = 1
-            guardar_datos()
-            st.rerun()
 
-    ventas_validas = [
-        v
-        for v in st.session_state.ventas
-        if isinstance(v, dict)
-        and v.get("estado") == "Completada"
-        and "detalles" in v
+# =========================================================
+# 7. DASHBOARD EJECUTIVO
+# =========================================================
+
+elif menu == "📊 Dashboard ejecutivo":
+    st.header("📊 Dashboard ejecutivo de ventas")
+
+    df = obtener_detalles()
+    ventas_ok = [
+        v for v in st.session_state.ventas
+        if v["estado"] == "Completada"
     ]
 
-    if not ventas_validas:
+    if df.empty:
         st.info(
-            "💡 No hay ventas registradas aún. Ve a '🛒 Registrar Venta' para añadir pedidos."
+            "Registra una venta para visualizar los gráficos e indicadores."
         )
     else:
-        df_pedidos = pd.DataFrame(ventas_validas)
-        detalles_list = []
-        for v in ventas_validas:
-            for item in v.get("detalles", []):
-                detalles_list.append(
-                    {
-                        "ID_Pedido": v.get("id", 0),
-                        "Fecha": v.get("fecha", ""),
-                        "Hora_Exacta": v.get("hora", "00:00:00"),
-                        "Hora_Entera": f"{str(v.get('hora', '00:00')).split(':')[0]}:00",
-                        "Cliente": v.get("cliente", "Anónimo"),
-                        "Servicio": v.get("servicio", "Para Llevar"),
-                        "Metodo_Pago": v.get("pago", "Efectivo"),
-                        "Producto": item.get("producto", "Desconocido"),
-                        "Categoria": item.get("categoria", "Frappés"),
-                        "Cantidad": item.get("cantidad", 1),
-                        "Precio_Unit": item.get("precio", 0.0),
-                        "Costo_Unit": item.get("costo", 0.0),
-                        "Ingreso_Total": item.get("subtotal", 0.0),
-                        "Costo_Total": item.get("costo_total", 0.0),
-                        "Ganancia_Neta": item.get("subtotal", 0.0)
-                        - item.get("costo_total", 0.0),
-                    }
-                )
+        ingresos = sum(v["total_venta"] for v in ventas_ok)
+        costos = sum(v["costo_total"] for v in ventas_ok)
+        utilidad = sum(v["ganancia_neta"] for v in ventas_ok)
+        unidades = int(df["Cantidad"].sum())
+        margen = utilidad / ingresos if ingresos else 0
 
-        df_detalles = pd.DataFrame(detalles_list)
+        # FILTRO DE FECHAS
+        fechas = sorted(df["Fecha"].dropna().astype(str).unique())
 
-        tot_pedidos = len(df_pedidos)
-        tot_ventas = (
-            df_pedidos["total_venta"].sum()
-            if "total_venta" in df_pedidos
-            else 0.0
-        )
-        tot_costo = (
-            df_pedidos["costo_total"].sum()
-            if "costo_total" in df_pedidos
-            else 0.0
-        )
-        ganancia_total = (
-            df_pedidos["ganancia_neta"].sum()
-            if "ganancia_neta" in df_pedidos
-            else 0.0
-        )
-        margen_prom = (
-            (ganancia_total / tot_ventas * 100) if tot_ventas > 0 else 0
-        )
-        total_items = (
-            df_detalles["Cantidad"].sum() if not df_detalles.empty else 0
-        )
+        with st.expander("🔎 Filtrar el dashboard por fecha"):
+            fechas_seleccionadas = st.multiselect(
+                "Fechas incluidas",
+                fechas,
+                default=fechas
+            )
+
+        if fechas_seleccionadas:
+            df = df[df["Fecha"].isin(fechas_seleccionadas)]
+            ids_filtrados = set(df["ID_Pedido"])
+            ventas_filtradas = [
+                v for v in ventas_ok if v["id"] in ids_filtrados
+            ]
+        else:
+            df = df.iloc[0:0]
+            ventas_filtradas = []
+
+        ingresos = sum(v["total_venta"] for v in ventas_filtradas)
+        costos = sum(v["costo_total"] for v in ventas_filtradas)
+        utilidad = sum(v["ganancia_neta"] for v in ventas_filtradas)
+        unidades = int(df["Cantidad"].sum()) if not df.empty else 0
+        margen = utilidad / ingresos if ingresos else 0
 
         k1, k2, k3, k4, k5, k6 = st.columns(6)
-        k1.metric("📦 Pedidos", f"{tot_pedidos}")
-        k2.metric("💰 Ventas", f"Bs. {tot_ventas:.2f}")
-        k3.metric("📉 Costos", f"Bs. {tot_costo:.2f}")
-        k4.metric("🚀 Ganancia", f"Bs. {ganancia_total:.2f}")
-        k5.metric("📊 Margen", f"{margen_prom:.1f}%")
-        k6.metric("🥤 Items", f"{total_items}")
+        k1.metric("🧾 Pedidos", len(ventas_filtradas))
+        k2.metric("💰 Ingresos", f"Bs. {ingresos:,.2f}")
+        k3.metric("📉 Costos", f"Bs. {costos:,.2f}")
+        k4.metric("💚 Utilidad", f"Bs. {utilidad:,.2f}")
+        k5.metric("📈 Margen", f"{margen:.1%}")
+        k6.metric("🥤 Unidades", unidades)
 
-        st.markdown("---")
+        st.divider()
 
-        col_c1, col_c2 = st.columns([3, 2])
+        col1, col2 = st.columns(2)
 
-        with col_c1:
-            st.subheader("📈 Tendencia de Ventas y Ganancias")
-            df_linea = (
-                df_detalles.groupby("ID_Pedido")[
-                    ["Ingreso_Total", "Ganancia_Neta"]
-                ]
-                .sum()
-                .reset_index()
+        with col1:
+            st.subheader("1. Ingresos y utilidad por pedido")
+
+            q = df.groupby("ID_Pedido", as_index=False).agg(
+                Ingresos=("Ingreso_Total", "sum"),
+                Utilidad=("Ganancia_Neta", "sum")
             )
 
-            fig_line = go.Figure()
-            fig_line.add_trace(
-                go.Scatter(
-                    x=df_linea["ID_Pedido"],
-                    y=df_linea["Ingreso_Total"],
-                    mode="lines+markers",
-                    name="Ingreso (Bs.)",
-                    line=dict(color="#00f2fe", width=3),
-                )
-            )
-            fig_line.add_trace(
-                go.Scatter(
-                    x=df_linea["ID_Pedido"],
-                    y=df_linea["Ganancia_Neta"],
-                    mode="lines+markers",
-                    name="Ganancia (Bs.)",
-                    line=dict(color="#00ff87", width=3, dash="dash"),
-                )
-            )
-            fig_line.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                legend=dict(orientation="h", y=1.15),
-                xaxis=dict(showgrid=False, title="N° Pedido"),
-                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
-            )
-            st.plotly_chart(fig_line, use_container_width=True)
+            fig = go.Figure()
 
-        with col_c2:
-            st.subheader("💳 Métodos de Pago")
-            df_pago = (
-                df_detalles.groupby("Metodo_Pago")["Ingreso_Total"]
-                .sum()
-                .reset_index()
+            fig.add_bar(
+                x=q["ID_Pedido"],
+                y=q["Ingresos"],
+                name="Ingresos",
+                marker_color="#22D3EE",
+                text=q["Ingresos"].map(lambda x: f"Bs. {x:.2f}"),
+                textposition="outside"
             )
-            fig_donut = px.pie(
-                df_pago,
-                values="Ingreso_Total",
+
+            fig.add_scatter(
+                x=q["ID_Pedido"],
+                y=q["Utilidad"],
+                name="Utilidad",
+                mode="lines+markers+text",
+                text=q["Utilidad"].map(lambda x: f"Bs. {x:.2f}"),
+                textposition="top center",
+                line=dict(color="#4ADE80", width=3)
+            )
+
+            st.plotly_chart(
+                estilo_figura(fig), use_container_width=True
+            )
+
+        with col2:
+            st.subheader("2. Recaudación por método de pago")
+
+            q = df.groupby("Metodo_Pago", as_index=False).agg(
+                Ingresos=("Ingreso_Total", "sum"),
+                Pedidos=("ID_Pedido", "nunique")
+            )
+
+            fig = px.pie(
+                q,
                 names="Metodo_Pago",
-                hole=0.5,
-                color_discrete_sequence=["#a855f7", "#00f2fe", "#ff007f"],
-            )
-            fig_donut.update_traces(textinfo="percent+label")
-            fig_donut.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                showlegend=False,
-            )
-            st.plotly_chart(fig_donut, use_container_width=True)
-
-        st.markdown("---")
-
-        col_c3, col_c4 = st.columns([3, 2])
-
-        with col_c3:
-            st.subheader("📊 Ingresos vs Costos por Producto")
-            df_prod = (
-                df_detalles.groupby("Producto")[
-                    ["Ingreso_Total", "Costo_Total"]
+                values="Ingresos",
+                hole=0.48,
+                color_discrete_sequence=[
+                    "#A78BFA", "#22D3EE", "#FB7185"
                 ]
-                .sum()
-                .reset_index()
             )
 
-            fig_bar_prod = go.Figure()
-            fig_bar_prod.add_trace(
-                go.Bar(
-                    x=df_prod["Producto"],
-                    y=df_prod["Ingreso_Total"],
-                    name="Ingreso",
-                    marker_color="#00f2fe",
+            fig.update_traces(
+                textinfo="label+percent",
+                customdata=q[["Pedidos"]],
+                hovertemplate=(
+                    "%{label}<br>Ingresos: Bs. %{value:.2f}"
+                    "<br>Pedidos: %{customdata[0]}<extra></extra>"
                 )
             )
-            fig_bar_prod.add_trace(
-                go.Bar(
-                    x=df_prod["Producto"],
-                    y=df_prod["Costo_Total"],
-                    name="Costo",
-                    marker_color="#ff4757",
-                )
-            )
-            fig_bar_prod.update_layout(
-                barmode="group",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                legend=dict(orientation="h", y=1.15),
-                xaxis=dict(showgrid=False),
-                yaxis=dict(showgrid=True, gridcolor="#21262d"),
-            )
-            st.plotly_chart(fig_bar_prod, use_container_width=True)
 
-        with col_c4:
-            st.subheader("⏰ Ventas por Horas")
-            df_hora = (
-                df_detalles.groupby("Hora_Entera")["Ingreso_Total"]
-                .sum()
-                .reset_index()
+            st.plotly_chart(
+                estilo_figura(fig), use_container_width=True
             )
 
-            fig_hora = px.bar(
-                df_hora,
+        st.divider()
+
+        col3, col4 = st.columns(2)
+
+        with col3:
+            st.subheader("3. Ingresos frente a costos")
+
+            q = df.groupby("Producto", as_index=False).agg(
+                Ingresos=("Ingreso_Total", "sum"),
+                Costos=("Costo_Total", "sum")
+            )
+
+            fig = go.Figure()
+
+            fig.add_bar(
+                x=q["Producto"], y=q["Ingresos"],
+                name="Ingresos", marker_color="#38BDF8",
+                text=q["Ingresos"].map(lambda x: f"Bs. {x:.0f}"),
+                textposition="outside"
+            )
+
+            fig.add_bar(
+                x=q["Producto"], y=q["Costos"],
+                name="Costos", marker_color="#FB7185",
+                text=q["Costos"].map(lambda x: f"Bs. {x:.0f}"),
+                textposition="outside"
+            )
+
+            fig.update_layout(barmode="group")
+
+            st.plotly_chart(
+                estilo_figura(fig), use_container_width=True
+            )
+
+        with col4:
+            st.subheader("4. Unidades vendidas por producto")
+
+            q = df.groupby("Producto", as_index=False).agg(
+                Unidades=("Cantidad", "sum")
+            ).sort_values("Unidades")
+
+            fig = px.bar(
+                q,
+                x="Unidades",
+                y="Producto",
+                orientation="h",
+                text="Unidades",
+                color="Unidades",
+                color_continuous_scale="Teal"
+            )
+
+            fig.update_traces(textposition="outside")
+
+            st.plotly_chart(
+                estilo_figura(fig), use_container_width=True
+            )
+
+        st.divider()
+
+        col5, col6 = st.columns(2)
+
+        with col5:
+            st.subheader("5. Ingresos por hora")
+
+            q = df.groupby("Hora_Entera", as_index=False).agg(
+                Ingresos=("Ingreso_Total", "sum"),
+                Pedidos=("ID_Pedido", "nunique")
+            ).sort_values("Hora_Entera")
+
+            fig = px.bar(
+                q,
                 x="Hora_Entera",
-                y="Ingreso_Total",
-                text="Ingreso_Total",
-                color_discrete_sequence=["#ff007f"],
+                y="Ingresos",
+                text="Ingresos",
+                color="Ingresos",
+                color_continuous_scale="Plasma",
+                hover_data=["Pedidos"]
             )
-            fig_hora.update_traces(
-                texttemplate="Bs. %{text:.0f}", textposition="outside"
-            )
-            fig_hora.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f0f6fc"),
-                height=300,
-                margin=dict(l=10, r=10, t=10, b=10),
-                xaxis=dict(showgrid=False, title="Hora"),
-                yaxis=dict(showgrid=True, gridcolor="#21262d", title="Bs."),
-            )
-            st.plotly_chart(fig_hora, use_container_width=True)
 
-# ---------------------------------------------------------
-# 4. EXPORTAR SUITE BI EXECUTIVE ULTRAMEGA DE INVERSIÓN
-# ---------------------------------------------------------
-elif opcion == "📥 Exportar Suite BI Nivel Inversión (.XLSX)":
-    st.header("📥 Central de Inteligencia de Negocios & Dashboard BI (.XLSX)")
+            fig.update_traces(
+                texttemplate="Bs. %{text:.2f}",
+                textposition="outside"
+            )
+
+            st.plotly_chart(
+                estilo_figura(fig), use_container_width=True
+            )
+
+        with col6:
+            st.subheader("6. Participación por categoría")
+
+            q = df.groupby("Categoria", as_index=False).agg(
+                Ingresos=("Ingreso_Total", "sum"),
+                Unidades=("Cantidad", "sum")
+            )
+
+            fig = px.pie(
+                q,
+                names="Categoria",
+                values="Ingresos",
+                hole=0.4,
+                color_discrete_sequence=[
+                    "#F59E0B", "#34D399", "#818CF8"
+                ]
+            )
+
+            fig.update_traces(
+                textinfo="label+percent",
+                hovertemplate=(
+                    "%{label}<br>Ingresos: Bs. %{value:.2f}"
+                    "<extra></extra>"
+                )
+            )
+
+            st.plotly_chart(
+                estilo_figura(fig), use_container_width=True
+            )
+
+        st.divider()
+        st.subheader("📋 Tabla de rendimiento por producto")
+
+        tabla = df.groupby(
+            ["Producto", "Categoria"], as_index=False
+        ).agg(
+            Unidades=("Cantidad", "sum"),
+            Ingresos=("Ingreso_Total", "sum"),
+            Costos=("Costo_Total", "sum"),
+            Utilidad=("Ganancia_Neta", "sum")
+        )
+
+        tabla["Margen (%)"] = (
+            tabla["Utilidad"]
+            / tabla["Ingresos"].replace(0, 1) * 100
+        )
+
+        st.dataframe(
+            tabla.style.format({
+                "Ingresos": "Bs. {:.2f}",
+                "Costos": "Bs. {:.2f}",
+                "Utilidad": "Bs. {:.2f}",
+                "Margen (%)": "{:.2f}%"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.subheader("📅 Resumen diario")
+
+        diario = df.groupby("Fecha", as_index=False).agg(
+            Pedidos=("ID_Pedido", "nunique"),
+            Unidades=("Cantidad", "sum"),
+            Ingresos=("Ingreso_Total", "sum"),
+            Costos=("Costo_Total", "sum"),
+            Utilidad=("Ganancia_Neta", "sum")
+        )
+
+        st.dataframe(
+            diario,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# =========================================================
+# 8. BASE DE DATOS EXCEL
+# =========================================================
+
+elif menu == "🗄️ Base de datos Excel":
+    st.header("🗄️ Base de datos local")
+
     st.write(
-        "Genera un libro interactivo multi-pestaña nivel **Inversión Corporativa**: incluye Dashboard Maestro BI con paneles laterales en vivo, tarjetas KPI ejecutivas, análisis de ROI, tendencias por horario y 5 gráficos estratégicos incrustados."
+        "El sistema guarda el inventario, las ventas y el detalle "
+        "de cada pedido en un libro Excel local."
     )
 
-    ventas_validas = [
-        v
-        for v in st.session_state.ventas
-        if isinstance(v, dict) and v.get("estado") == "Completada"
-    ]
+    st.code(str(DB))
 
-    if not ventas_validas:
-        st.info(
-            "💡 Registra al menos una venta para poder generar la Suite de Inteligencia de Negocios."
-        )
-    else:
-        detalles_list = []
-        for v in ventas_validas:
-            for item in v.get("detalles", []):
-                hora_str = str(v.get("hora", "00:00"))
-                hora_entera = f"{hora_str.split(':')[0]}:00"
-                detalles_list.append(
-                    {
-                        "ID_Pedido": v.get("id"),
-                        "Fecha": v.get("fecha"),
-                        "Hora": v.get("hora"),
-                        "Hora_Entera": hora_entera,
-                        "Cliente": v.get("cliente"),
-                        "Modalidad": v.get("servicio"),
-                        "Metodo_Pago": v.get("pago"),
-                        "Producto": item.get("producto"),
-                        "Categoria": item.get("categoria"),
-                        "Cantidad": item.get("cantidad"),
-                        "Precio_Unitario": item.get("precio"),
-                        "Costo_Unitario": item.get("costo"),
-                        "Ingreso_Total": item.get("subtotal"),
-                        "Costo_Total": item.get("costo_total"),
-                        "Ganancia_Neta": item.get("ganancia_item"),
-                    }
-                )
+    tab1, tab2, tab3 = st.tabs([
+        "📦 Inventario", "💰 Ventas", "🧾 Detalle de ventas"
+    ])
 
-        df_detalles = pd.DataFrame(detalles_list)
-
-        # Tablas Agrupadas Corporativas
-        df_res_diario = (
-            df_detalles.groupby("Fecha", as_index=False)
-            .agg(
-                Total_Pedidos=("ID_Pedido", "nunique"),
-                Unidades_Vendidas=("Cantidad", "sum"),
-                Ingresos_Totales=("Ingreso_Total", "sum"),
-                Costos_Totales=("Costo_Total", "sum"),
-                Utilidad_Neta=("Ganancia_Neta", "sum"),
-            )
-        )
-        df_res_diario["Margen_%"] = (df_res_diario["Utilidad_Neta"] / df_res_diario["Ingresos_Totales"]).fillna(0)
-
-        df_res_prod = (
-            df_detalles.groupby(["Producto", "Categoria"], as_index=False)
-            .agg(
-                Cantidad_Total=("Cantidad", "sum"),
-                Ingresos_Totales=("Ingreso_Total", "sum"),
-                Costos_Totales=("Costo_Total", "sum"),
-                Ganancia_Neta=("Ganancia_Neta", "sum"),
-            )
-        )
-        df_res_prod["Margen_%"] = (df_res_prod["Ganancia_Neta"] / df_res_prod["Ingresos_Totales"]).fillna(0)
-        
-        tot_ing_global = df_res_prod["Ingresos_Totales"].sum()
-        df_res_prod["%_Participacion"] = (df_res_prod["Ingresos_Totales"] / tot_ing_global).fillna(0) if tot_ing_global > 0 else 0
-
-        df_res_roi = df_res_prod[["Producto", "Categoria", "Ingresos_Totales", "Costos_Totales", "Ganancia_Neta", "Margen_%"]].copy()
-        df_res_roi["ROI_%"] = (df_res_roi["Ganancia_Neta"] / df_res_roi["Costos_Totales"]).fillna(0)
-
-        df_res_pedidos = (
-            df_detalles.groupby(
-                ["ID_Pedido", "Fecha", "Hora", "Cliente", "Modalidad", "Metodo_Pago"],
-                as_index=False,
-            )
-            .agg(
-                Items_Totales=("Cantidad", "sum"),
-                Ingreso_Pedido=("Ingreso_Total", "sum"),
-                Costo_Pedido=("Costo_Total", "sum"),
-                Ganancia_Pedido=("Ganancia_Neta", "sum"),
-            )
+    with tab1:
+        st.dataframe(
+            pd.DataFrame([
+                {"Producto": n, **p}
+                for n, p in st.session_state.inventario.items()
+            ]),
+            use_container_width=True,
+            hide_index=True
         )
 
-        df_res_pagos = (
-            df_detalles.groupby("Metodo_Pago", as_index=False)
-            .agg(
-                Transacciones=("ID_Pedido", "nunique"),
-                Recaudacion=("Ingreso_Total", "sum"),
-            )
+    with tab2:
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "ID": v["id"],
+                    "Fecha": v["fecha"],
+                    "Hora": v["hora"],
+                    "Cliente": v["cliente"],
+                    "Total": v["total_venta"],
+                    "Costo": v["costo_total"],
+                    "Utilidad": v["ganancia_neta"],
+                    "Estado": v["estado"]
+                }
+                for v in st.session_state.ventas
+            ]),
+            use_container_width=True,
+            hide_index=True
         )
 
-        df_res_cat = (
-            df_detalles.groupby("Categoria", as_index=False)
-            .agg(
+    with tab3:
+        st.dataframe(
+            obtener_detalles(),
+            use_container_width=True,
+            hide_index=True
+        )
+
+    if DB.exists():
+        st.download_button(
+            "⬇️ Descargar copia de la base de datos",
+            data=DB.read_bytes(),
+            file_name="frappes_database_copia.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            use_container_width=True
+        )
+
+    if st.button("💾 Guardar base de datos ahora"):
+        try:
+            guardar_db()
+            st.success("Base de datos guardada correctamente.")
+        except Exception as e:
+            st.error(f"No se pudo guardar: {e}")
+
+
+# =========================================================
+# 9. EXPORTAR REPORTE BI PROFESIONAL
+# =========================================================
+
+elif menu == "📤 Exportar reporte BI":
+    st.header("📤 Suite de inteligencia de negocios")
+
+    df = obtener_detalles()
+
+    st.write(
+        "Crea un Excel con dashboard, gráficos, indicadores, "
+        "inventario, ventas y hojas analíticas."
+    )
+
+    if st.button(
+        "🚀 Generar Excel profesional",
+        use_container_width=True
+    ):
+        salida = BytesIO()
+
+        if not df.empty:
+            productos = df.groupby(
+                ["Producto", "Categoria"], as_index=False
+            ).agg(
                 Unidades=("Cantidad", "sum"),
-                Ingresos=("Ingreso_Total", "sum")
+                Ingresos=("Ingreso_Total", "sum"),
+                Costos=("Costo_Total", "sum"),
+                Utilidad=("Ganancia_Neta", "sum")
             )
-        )
 
-        df_res_hora = (
-            df_detalles.groupby("Hora_Entera", as_index=False)
-            .agg(
+            productos["Margen_%"] = (
+                productos["Utilidad"]
+                / productos["Ingresos"].replace(0, 1)
+            )
+
+            total_ing = productos["Ingresos"].sum()
+
+            productos["Participacion_%"] = (
+                productos["Ingresos"] / total_ing
+                if total_ing else 0
+            )
+
+            pagos = df.groupby(
+                "Metodo_Pago", as_index=False
+            ).agg(
                 Pedidos=("ID_Pedido", "nunique"),
                 Ingresos=("Ingreso_Total", "sum")
             )
-        )
 
-        st.success("✅ Modelo BI Corporativo cargado e integrado.")
+            horas = df.groupby(
+                "Hora_Entera", as_index=False
+            ).agg(
+                Pedidos=("ID_Pedido", "nunique"),
+                Unidades=("Cantidad", "sum"),
+                Ingresos=("Ingreso_Total", "sum")
+            ).sort_values("Hora_Entera")
 
-        if st.button("🚀 Generar Suite BI Corporativa Nivel Inversión", use_container_width=True):
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                # 1. Escribir todas las hojas analíticas
-                df_res_diario.to_excel(writer, sheet_name="Reporte del Día", index=False)
-                df_res_prod.to_excel(writer, sheet_name="Rendimiento Productos", index=False)
-                df_res_roi.to_excel(writer, sheet_name="Análisis Margen & ROI", index=False)
-                df_res_cat.to_excel(writer, sheet_name="Ventas Categoria", index=False)
-                df_res_hora.to_excel(writer, sheet_name="Tendencia Horaria", index=False)
-                df_res_pagos.to_excel(writer, sheet_name="Flujo por Pago", index=False)
-                df_res_pedidos.to_excel(writer, sheet_name="Auditoria de Pedidos", index=False)
-                df_detalles.to_excel(writer, sheet_name="Transacciones Maestro", index=False)
-
-                workbook = writer.book
-
-                # Estilizador Corporativo Premium
-                def aplicar_estilo_corporativo(ws, df, titulo_hoja):
-                    ws.views.sheetView[0].showGridLines = True
-                    fill_title = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
-                    fill_header = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-                    fill_zebra = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
-                    
-                    font_title = Font(name="Calibri", size=15, bold=True, color="FFFFFF")
-                    font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-                    font_normal = Font(name="Calibri", size=11, color="0F172A")
-                    
-                    border_grid = Border(
-                        left=Side(style='thin', color='E2E8F0'),
-                        right=Side(style='thin', color='E2E8F0'),
-                        top=Side(style='thin', color='E2E8F0'),
-                        bottom=Side(style='thin', color='E2E8F0')
-                    )
-
-                    ws.insert_rows(1, 2)
-                    max_col = len(df.columns)
-                    max_col_letter = get_column_letter(max_col)
-                    
-                    ws.merge_cells(f"A1:{max_col_letter}1")
-                    c_title = ws["A1"]
-                    c_title.value = f"💼 {titulo_hoja.upper()} - SUITE DE INVERSIÓN"
-                    c_title.font = font_title
-                    c_title.fill = fill_title
-                    c_title.alignment = Alignment(horizontal="center", vertical="center")
-                    ws.row_dimensions[1].height = 38
-
-                    ws.row_dimensions[3].height = 24
-                    for col_num in range(1, max_col + 1):
-                        cell = ws.cell(row=3, column=col_num)
-                        cell.font = font_header
-                        cell.fill = fill_header
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
-
-                    for row_num in range(4, len(df) + 4):
-                        ws.row_dimensions[row_num].height = 20
-                        is_even = (row_num % 2 == 0)
-                        for col_num in range(1, max_col + 1):
-                            cell = ws.cell(row=row_num, column=col_num)
-                            cell.font = font_normal
-                            cell.border = border_grid
-                            if is_even:
-                                cell.fill = fill_zebra
-                            
-                            col_name = df.columns[col_num-1]
-                            if "Margen" in col_name or "%" in col_name or "ROI" in col_name or "Participacion" in col_name:
-                                cell.number_format = '0.00%'
-                            elif "Ingreso" in col_name or "Costo" in col_name or "Ganancia" in col_name or "Utilidad" in col_name or "Recaudacion" in col_name:
-                                cell.number_format = '#,##0.00'
-                            elif "Unidades" in col_name or "Cantidad" in col_name or "Pedidos" in col_name or "Transacciones" in col_name:
-                                cell.number_format = '#,##0'
-
-                    for col in ws.columns:
-                        max_len = 0
-                        col_letter = get_column_letter(col[0].column)
-                        for cell in col:
-                            if cell.row > 2 and cell.value is not None:
-                                max_len = max(max_len, len(str(cell.value)))
-                        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
-
-                aplicar_estilo_corporativo(workbook["Reporte del Día"], df_res_diario, "Consolidado Diario de Operaciones")
-                aplicar_estilo_corporativo(workbook["Rendimiento Productos"], df_res_prod, "Rendimiento y Margen por Producto")
-                aplicar_estilo_corporativo(workbook["Análisis Margen & ROI"], df_res_roi, "Análisis Financiero de ROI")
-                aplicar_estilo_corporativo(workbook["Ventas Categoria"], df_res_cat, "Ingresos por Categoría")
-                aplicar_estilo_corporativo(workbook["Tendencia Horaria"], df_res_hora, "Análisis de Ventas por Hora")
-                aplicar_estilo_corporativo(workbook["Flujo por Pago"], df_res_pagos, "Flujo Financiero por Método de Pago")
-                aplicar_estilo_corporativo(workbook["Auditoria de Pedidos"], df_res_pedidos, "Auditoría de Transacciones")
-                aplicar_estilo_corporativo(workbook["Transacciones Maestro"], df_detalles, "Base de Datos Maestro POS")
-
-                # ========================================================
-                # CREACIÓN DEL DASHBOARD MAESTRO BI (HOJA PRINCIPAL DE EXCEL)
-                # ========================================================
-                ws_dash = workbook.create_sheet(title="Dashboard Maestro BI", index=0)
-                ws_dash.views.sheetView[0].showGridLines = True
-
-                fill_dash_header = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
-                fill_card_header = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-                fill_card_body = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
-                
-                border_thin = Border(
-                    left=Side(style='thin', color='CBD5E1'),
-                    right=Side(style='thin', color='CBD5E1'),
-                    top=Side(style='thin', color='CBD5E1'),
-                    bottom=Side(style='thin', color='CBD5E1')
-                )
-
-                # Banner Principal del Dashboard
-                ws_dash.merge_cells("B2:Q2")
-                cell_title = ws_dash["B2"]
-                cell_title.value = "📊 EXECUTIVE BUSINESS INTELLIGENCE DASHBOARD - FRAPPÉS"
-                cell_title.font = Font(name="Calibri", size=18, bold=True, color="FFFFFF")
-                cell_title.fill = fill_dash_header
-                cell_title.alignment = Alignment(horizontal="center", vertical="center")
-                ws_dash.row_dimensions[2].height = 45
-
-                # 6 Tarjetas KPI Ejecutivas con Fórmulas
-                kpis = [
-                    ("INGRESOS TOTALES (Bs.)", f"=SUM('Transacciones Maestro'!M4:M{len(df_detalles)+3})", "B", "C", "#,##0.00"),
-                    ("COSTOS OPERATIVOS (Bs.)", f"=SUM('Transacciones Maestro'!N4:N{len(df_detalles)+3})", "D", "E", "#,##0.00"),
-                    ("UTILIDAD NETA (Bs.)", f"=SUM('Transacciones Maestro'!O4:O{len(df_detalles)+3})", "F", "G", "#,##0.00"),
-                    ("MARGEN GLOBAL (%)", f"=IF(B5=0,0,F5/B5)", "H", "I", "0.00%"),
-                    ("TOTAL TRANSACCIONES", f"=COUNTA('Auditoria de Pedidos'!A4:A{len(df_res_pedidos)+3})", "J", "K", "#,##0"),
-                    ("UNIDADES VENDIDAS", f"=SUM('Transacciones Maestro'!J4:J{len(df_detalles)+3})", "L", "M", "#,##0"),
-                ]
-
-                row_kpi_lbl = 4
-                row_kpi_val = 5
-                ws_dash.row_dimensions[row_kpi_lbl].height = 20
-                ws_dash.row_dimensions[row_kpi_val].height = 32
-
-                for label, formula, c1, c2, num_fmt in kpis:
-                    ws_dash.merge_cells(f"{c1}{row_kpi_lbl}:{c2}{row_kpi_lbl}")
-                    ws_dash.merge_cells(f"{c1}{row_kpi_val}:{c2}{row_kpi_val}")
-                    
-                    c_lbl = ws_dash[f"{c1}{row_kpi_lbl}"]
-                    c_lbl.value = label
-                    c_lbl.font = Font(name="Calibri", size=9, bold=True, color="FFFFFF")
-                    c_lbl.fill = fill_card_header
-                    c_lbl.alignment = Alignment(horizontal="center", vertical="center")
-
-                    c_val = ws_dash[f"{c1}{row_kpi_val}"]
-                    c_val.value = formula
-                    c_val.font = Font(name="Calibri", size=14, bold=True, color="0F172A")
-                    c_val.fill = fill_card_body
-                    c_val.alignment = Alignment(horizontal="center", vertical="center")
-                    c_val.number_format = num_fmt
-
-                # Panel Lateral de Desglose en Vivo (Side Data Table)
-                ws_dash["B8"] = "📌 RESUMEN DE RENDIMIENTO DE PRODUCTOS"
-                ws_dash["B8"].font = Font(name="Calibri", size=11, bold=True, color="0F172A")
-
-                headers_side = ["Producto", "Categoría", "Cant. Vendida", "Ingreso (Bs.)", "Margen %", "% Part."]
-                for col_idx, h in enumerate(headers_side, start=2):
-                    cell = ws_dash.cell(row=9, column=col_idx)
-                    cell.value = h
-                    cell.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-                    cell.fill = fill_card_header
-                    cell.alignment = Alignment(horizontal="center", vertical="center")
-                ws_dash.row_dimensions[9].height = 22
-
-                for r_idx, row_data in df_res_prod.iterrows():
-                    r_num = 10 + r_idx
-                    ws_dash.row_dimensions[r_num].height = 18
-                    ws_dash.cell(row=r_num, column=2, value=row_data["Producto"]).font = Font(name="Calibri", size=10)
-                    ws_dash.cell(row=r_num, column=3, value=row_data["Categoria"]).font = Font(name="Calibri", size=10)
-                    
-                    c_cant = ws_dash.cell(row=r_num, column=4, value=row_data["Cantidad_Total"])
-                    c_cant.font = Font(name="Calibri", size=10)
-                    c_cant.number_format = "#,##0"
-
-                    c_ing = ws_dash.cell(row=r_num, column=5, value=row_data["Ingresos_Totales"])
-                    c_ing.font = Font(name="Calibri", size=10)
-                    c_ing.number_format = "#,##0.00"
-
-                    c_mar = ws_dash.cell(row=r_num, column=6, value=row_data["Margen_%"])
-                    c_mar.font = Font(name="Calibri", size=10)
-                    c_mar.number_format = "0.00%"
-
-                    c_part = ws_dash.cell(row=r_num, column=7, value=row_data["%_Participacion"])
-                    c_part.font = Font(name="Calibri", size=10)
-                    c_part.number_format = "0.00%"
-
-                    for col in range(2, 8):
-                        ws_dash.cell(row=r_num, column=col).border = border_thin
-
-                # --------------------------------------------------
-                # INCRUSTAR 5 GRÁFICOS PROFESIONALES DE EXCEL
-                # --------------------------------------------------
-                ws_prod = workbook["Rendimiento Productos"]
-                ws_pagos = workbook["Flujo por Pago"]
-                ws_pedidos = workbook["Auditoria de Pedidos"]
-                ws_cat = workbook["Ventas Categoria"]
-                ws_hora = workbook["Tendencia Horaria"]
-
-                # 1. Gráfico de Barras Doble (Ingresos y Costos)
-                chart_bar = BarChart()
-                chart_bar.type = "col"
-                chart_bar.style = 10
-                chart_bar.title = "Ingresos vs Costos por Producto (Bs.)"
-                chart_bar.y_axis.title = "Bolivianos (Bs.)"
-                data_bar = Reference(ws_prod, min_col=4, min_row=3, max_col=5, max_row=len(df_res_prod)+3)
-                cats_bar = Reference(ws_prod, min_col=1, min_row=4, max_row=len(df_res_prod)+3)
-                chart_bar.add_data(data_bar, titles_from_data=True)
-                chart_bar.set_categories(cats_bar)
-                chart_bar.width = 16
-                chart_bar.height = 10
-                ws_dash.add_chart(chart_bar, "I8")
-
-                # 2. Gráfico de Anillo (Recaudación por Método de Pago)
-                chart_donut = DoughnutChart()
-                chart_donut.title = "Recaudación por Método de Pago"
-                data_donut = Reference(ws_pagos, min_col=3, min_row=3, max_row=len(df_res_pagos)+3)
-                cats_donut = Reference(ws_pagos, min_col=1, min_row=4, max_row=len(df_res_pagos)+3)
-                chart_donut.add_data(data_donut, titles_from_data=True)
-                chart_donut.set_categories(cats_donut)
-                chart_donut.width = 12
-                chart_donut.height = 10
-                ws_dash.add_chart(chart_donut, "N8")
-
-                # 3. Gráfico de Torta / Pie (Participación por Categoría)
-                chart_pie = PieChart()
-                chart_pie.title = "Distribución por Categoría"
-                data_pie = Reference(ws_cat, min_col=3, min_row=3, max_row=len(df_res_cat)+3)
-                cats_pie = Reference(ws_cat, min_col=1, min_row=4, max_row=len(df_res_cat)+3)
-                chart_pie.add_data(data_pie, titles_from_data=True)
-                chart_pie.set_categories(cats_pie)
-                chart_pie.width = 12
-                chart_pie.height = 10
-                ws_dash.add_chart(chart_pie, "B25")
-
-                # 4. Gráfico de Líneas (Curva de Ventas e Horas Pico)
-                chart_line = LineChart()
-                chart_line.title = "Curva de Ventas e Horas Pico (Bs.)"
-                chart_line.style = 13
-                chart_line.y_axis.title = "Ingresos (Bs.)"
-                data_line = Reference(ws_hora, min_col=3, min_row=3, max_row=len(df_res_hora)+3)
-                cats_line = Reference(ws_hora, min_col=1, min_row=4, max_row=len(df_res_hora)+3)
-                chart_line.add_data(data_line, titles_from_data=True)
-                chart_line.set_categories(cats_line)
-                chart_line.width = 16
-                chart_line.height = 10
-                ws_dash.add_chart(chart_line, "H25")
-
-                # 5. Gráfico de Dispersión (Relación Costo vs Ingreso por Pedido)
-                chart_scatter = ScatterChart()
-                chart_scatter.title = "Relación Costo vs Ingreso por Pedido"
-                chart_scatter.style = 2
-                chart_scatter.y_axis.title = "Ingreso Total (Bs.)"
-                chart_scatter.x_axis.title = "Costo del Pedido (Bs.)"
-                xvalues = Reference(ws_pedidos, min_col=9, min_row=4, max_row=len(df_res_pedidos)+3)
-                yvalues = Reference(ws_pedidos, min_col=8, min_row=4, max_row=len(df_res_pedidos)+3)
-                series_scatter = Series(yvalues, xvalues, title_from_data=False)
-                chart_scatter.series.append(series_scatter)
-                chart_scatter.width = 13
-                chart_scatter.height = 10
-                ws_dash.add_chart(chart_scatter, "N25")
-
-                # Autoajuste de anchos de columna en el Dashboard
-                for col in ws_dash.columns:
-                    max_len = 0
-                    col_letter = get_column_letter(col[0].column)
-                    for cell in col:
-                        if cell.row > 2 and cell.value is not None:
-                            max_len = max(max_len, len(str(cell.value)))
-                    ws_dash.column_dimensions[col_letter].width = max(max_len + 4, 15)
-
-            excel_data = output.getvalue()
-
-            st.download_button(
-                label="⬇️ Descargar Suite BI Nivel Inversión Completa (.XLSX)",
-                data=excel_data,
-                file_name=f"Suite_BI_Inversion_Frappes_{ahora_bo.strftime('%Y-%m-%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+            categorias = df.groupby(
+                "Categoria", as_index=False
+            ).agg(
+                Unidades=("Cantidad", "sum"),
+                Ingresos=("Ingreso_Total", "sum")
             )
 
-        st.markdown("---")
-        st.subheader("👁️ Vista Previa del Reporte Gerencial")
-        tab_v1, tab_v2, tab_v3 = st.tabs(
-            ["Reporte del Día", "Análisis ROI & Margen", "Tendencia Horaria"]
+            diario = df.groupby(
+                "Fecha", as_index=False
+            ).agg(
+                Pedidos=("ID_Pedido", "nunique"),
+                Unidades=("Cantidad", "sum"),
+                Ingresos=("Ingreso_Total", "sum"),
+                Costos=("Costo_Total", "sum"),
+                Utilidad=("Ganancia_Neta", "sum")
+            )
+
+        else:
+            productos = pd.DataFrame(columns=[
+                "Producto", "Categoria", "Unidades", "Ingresos",
+                "Costos", "Utilidad", "Margen_%", "Participacion_%"
+            ])
+            pagos = pd.DataFrame(
+                columns=["Metodo_Pago", "Pedidos", "Ingresos"]
+            )
+            horas = pd.DataFrame(
+                columns=["Hora_Entera", "Pedidos", "Unidades", "Ingresos"]
+            )
+            categorias = pd.DataFrame(
+                columns=["Categoria", "Unidades", "Ingresos"]
+            )
+            diario = pd.DataFrame(
+                columns=[
+                    "Fecha", "Pedidos", "Unidades", "Ingresos",
+                    "Costos", "Utilidad"
+                ]
+            )
+
+        inventario_df = pd.DataFrame([
+            {
+                "Producto": n,
+                "Categoria": p["categoria"],
+                "Precio": p["precio"],
+                "Costo": p["costo"],
+                "Stock": p["stock"],
+                "Utilidad_Unit": p["precio"] - p["costo"]
+            }
+            for n, p in st.session_state.inventario.items()
+        ])
+
+        ventas_df = pd.DataFrame([
+            {
+                "ID": v["id"],
+                "Fecha": v["fecha"],
+                "Hora": v["hora"],
+                "Cliente": v["cliente"],
+                "Modalidad": v["servicio"],
+                "Metodo_Pago": v["pago"],
+                "Notas": v.get("notas", ""),
+                "Total_Venta": v["total_venta"],
+                "Costo_Total": v["costo_total"],
+                "Ganancia_Neta": v["ganancia_neta"],
+                "Estado": v["estado"]
+            }
+            for v in st.session_state.ventas
+        ])
+
+        total_ventas = (
+            ventas_df["Total_Venta"].sum()
+            if not ventas_df.empty else 0
         )
-        with tab_v1:
-            st.dataframe(df_res_diario, use_container_width=True)
-        with tab_v2:
-            st.dataframe(df_res_roi, use_container_width=True)
-        with tab_v3:
-            st.dataframe(df_res_hora, use_container_width=True)
+        total_costos = (
+            ventas_df["Costo_Total"].sum()
+            if not ventas_df.empty else 0
+        )
+        total_utilidad = (
+            ventas_df["Ganancia_Neta"].sum()
+            if not ventas_df.empty else 0
+        )
+        total_unidades = int(df["Cantidad"].sum()) if not df.empty else 0
+
+        with pd.ExcelWriter(salida, engine="openpyxl") as writer:
+            productos.to_excel(writer, sheet_name="Productos", index=False)
+            pagos.to_excel(writer, sheet_name="Metodos de Pago", index=False)
+            horas.to_excel(writer, sheet_name="Horas Pico", index=False)
+            categorias.to_excel(writer, sheet_name="Categorias", index=False)
+            diario.to_excel(writer, sheet_name="Resumen Diario", index=False)
+            inventario_df.to_excel(writer, sheet_name="Inventario", index=False)
+            ventas_df.to_excel(writer, sheet_name="Ventas", index=False)
+            df.to_excel(writer, sheet_name="Detalle Ventas", index=False)
+
+            wb = writer.book
+
+            # FORMATO DE LAS HOJAS
+            for ws in wb.worksheets:
+                ws.freeze_panes = "A2"
+                ws.sheet_view.showGridLines = False
+
+                for cell in ws[1]:
+                    cell.fill = PatternFill(
+                        "solid", fgColor="16324F"
+                    )
+                    cell.font = Font(
+                        bold=True, color="FFFFFF"
+                    )
+                    cell.alignment = Alignment(
+                        horizontal="center", vertical="center"
+                    )
+
+                for col in ws.columns:
+                    letra = get_column_letter(col[0].column)
+                    ancho = max(
+                        [
+                            len(str(c.value))
+                            if c.value is not None else 0
+                            for c in col
+                        ] + [12]
+                    )
+                    ws.column_dimensions[letra].width = min(
+                        max(ancho + 3, 14), 35
+                    )
+
+                if ws.max_row >= 2 and ws.max_column >= 1:
+                    nombre_tabla = "Tabla" + "".join(
+                        ch for ch in ws.title if ch.isalnum()
+                    )[:20]
+
+                    tabla = Table(
+                        displayName=nombre_tabla,
+                        ref=ws.dimensions
+                    )
+                    tabla.tableStyleInfo = TableStyleInfo(
+                        name="TableStyleMedium2",
+                        showFirstColumn=False,
+                        showLastColumn=False,
+                        showRowStripes=True,
+                        showColumnStripes=False
+                    )
+                    ws.add_table(tabla)
+
+            # DASHBOARD MAESTRO
+            dash = wb.create_sheet("Dashboard Ejecutivo", 0)
+            dash.sheet_view.showGridLines = False
+
+            dash.merge_cells("B2:Q2")
+            dash["B2"] = "🥤 FRAPPÉS | DASHBOARD EJECUTIVO"
+            dash["B2"].fill = PatternFill(
+                "solid", fgColor="102A43"
+            )
+            dash["B2"].font = Font(
+                size=18, bold=True, color="FFFFFF"
+            )
+            dash["B2"].alignment = Alignment(
+                horizontal="center", vertical="center"
+            )
+            dash.row_dimensions[2].height = 42
+
+            tarjetas = [
+                ("INGRESOS (Bs.)", total_ventas, "B", "D",
+                 "0891B2", "#,##0.00"),
+                ("COSTOS (Bs.)", total_costos, "E", "G",
+                 "D97706", "#,##0.00"),
+                ("UTILIDAD (Bs.)", total_utilidad, "H", "J",
+                 "15803D", "#,##0.00"),
+                ("MARGEN", total_utilidad / total_ventas
+                 if total_ventas else 0, "K", "M",
+                 "6D28D9", "0.00%"),
+                ("PEDIDOS", len(ventas_df), "N", "O",
+                 "BE185D", "#,##0"),
+                ("UNIDADES", total_unidades, "P", "Q",
+                 "0F766E", "#,##0")
+            ]
+
+            for etiqueta, valor, c1, c2, color, formato in tarjetas:
+                dash.merge_cells(f"{c1}4:{c2}4")
+                dash.merge_cells(f"{c1}5:{c2}6")
+
+                cab = dash[f"{c1}4"]
+                cab.value = etiqueta
+                cab.fill = PatternFill("solid", fgColor=color)
+                cab.font = Font(bold=True, color="FFFFFF")
+                cab.alignment = Alignment(horizontal="center")
+
+                celda = dash[f"{c1}5"]
+                celda.value = valor
+                celda.number_format = formato
+                celda.fill = PatternFill("solid", fgColor="EAF2F8")
+                celda.font = Font(
+                    size=14, bold=True, color="102A43"
+                )
+                celda.alignment = Alignment(
+                    horizontal="center", vertical="center"
+                )
+
+            # TABLA RESUMEN DE PRODUCTOS EN EL DASHBOARD
+            dash["B8"] = "RESUMEN DE RENDIMIENTO POR PRODUCTO"
+            dash["B8"].font = Font(bold=True, size=12, color="102A43")
+
+            resumen_cols = [
+                "Producto", "Categoria", "Unidades", "Ingresos",
+                "Costos", "Utilidad", "Margen_%", "Participacion_%"
+            ]
+
+            for j, nombre_col in enumerate(resumen_cols, 2):
+                celda = dash.cell(row=9, column=j, value=nombre_col)
+                celda.fill = PatternFill("solid", fgColor="16324F")
+                celda.font = Font(bold=True, color="FFFFFF")
+                celda.alignment = Alignment(horizontal="center")
+
+            for i, fila in enumerate(
+                productos[resumen_cols].itertuples(index=False, name=None),
+                10
+            ):
+                for j, valor in enumerate(fila, 2):
+                    celda = dash.cell(row=i, column=j, value=valor)
+                    celda.border = Border(
+                        bottom=Side(style="thin", color="CBD5E1")
+                    )
+
+                    if j in (5, 6, 7):
+                        celda.number_format = '#,##0.00'
+                    elif j in (8, 9):
+                        celda.number_format = '0.00%'
+
+            # FUNCIÓN PARA CREAR GRÁFICOS
+            def agregar_grafico(
+                tipo, titulo, hoja, col_datos,
+                col_categoria, ancla, ancho=15, alto=8
+            ):
+                origen = wb[hoja]
+
+                if origen.max_row < 2:
+                    return
+
+                grafico = tipo()
+                grafico.title = titulo
+
+                datos = Reference(
+                    origen,
+                    min_col=col_datos,
+                    min_row=1,
+                    max_row=origen.max_row
+                )
+
+                categorias_ref = Reference(
+                    origen,
+                    min_col=col_categoria,
+                    min_row=2,
+                    max_row=origen.max_row
+                )
+
+                grafico.add_data(datos, titles_from_data=True)
+                grafico.set_categories(categorias_ref)
+                grafico.width = ancho
+                grafico.height = alto
+                grafico.style = 10
+
+                if tipo == BarChart:
+                    grafico.type = "col"
+                    grafico.legend.position = "b"
+
+                grafico.dataLabels = DataLabelList()
+                grafico.dataLabels.showVal = True
+
+                dash.add_chart(grafico, ancla)
+
+            # 6 GRÁFICOS EN EL DASHBOARD DE EXCEL
+            agregar_grafico(
+                BarChart, "Ingresos por producto (Bs.)",
+                "Productos", 4, 1, "B25"
+            )
+
+            agregar_grafico(
+                BarChart, "Utilidad por producto (Bs.)",
+                "Productos", 6, 1, "J25"
+            )
+
+            agregar_grafico(
+                DoughnutChart, "Recaudación por método de pago",
+                "Metodos de Pago", 3, 1, "B42"
+            )
+
+            agregar_grafico(
+                LineChart, "Ingresos por hora",
+                "Horas Pico", 4, 1, "H42"
+            )
+
+            agregar_grafico(
+                PieChart, "Ingresos por categoría",
+                "Categorias", 3, 1, "N42"
+            )
+
+            agregar_grafico(
+                BarChart, "Unidades por producto",
+                "Productos", 3, 1, "B59"
+            )
+
+            for col in range(1, 18):
+                dash.column_dimensions[
+                    get_column_letter(col)
+                ].width = 15
+
+        st.session_state.archivo_excel = salida.getvalue()
+        st.success("¡Excel profesional generado correctamente!")
+
+    if "archivo_excel" in st.session_state:
+        st.download_button(
+            "⬇️ DESCARGAR EXCEL CON DASHBOARD Y GRÁFICOS",
+            data=st.session_state.archivo_excel,
+            file_name=(
+                f"Frappes_Dashboard_{ahora():%Y%m%d_%H%M}.xlsx"
+            ),
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            use_container_width=True
+        )
